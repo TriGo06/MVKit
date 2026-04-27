@@ -1,0 +1,73 @@
+//! Python bindings for mvkit-core.
+#![allow(clippy::useless_conversion)]
+
+use mvkit_core::models::CuckerSmale;
+use mvkit_core::schemes::euler_maruyama;
+use ndarray::Array2;
+use numpy::{IntoPyArray, PyArray3, PyReadonlyArray2};
+use pyo3::prelude::*;
+
+/// Simulate the Cucker-Smale flocking model.
+///
+/// See `python/mvkit/__init__.py` for the user-facing docstring.
+#[pyfunction]
+#[pyo3(signature = (
+    x0,
+    t_final,
+    n_steps,
+    spatial_dim,
+    beta = 0.5,
+    sigma = 0.1,
+    record_every = 0,
+    seed = 42,
+))]
+#[allow(clippy::too_many_arguments)]
+fn simulate_cucker_smale<'py>(
+    py: Python<'py>,
+    x0: PyReadonlyArray2<'py, f64>,
+    t_final: f64,
+    n_steps: usize,
+    spatial_dim: usize,
+    beta: f64,
+    sigma: f64,
+    record_every: usize,
+    seed: u64,
+) -> PyResult<Bound<'py, PyArray3<f64>>> {
+    let x0_view = x0.as_array();
+    let expected_cols = 2 * spatial_dim;
+    if x0_view.ncols() != expected_cols {
+        return Err(pyo3::exceptions::PyValueError::new_err(format!(
+            "x0 has {} columns, expected 2 * spatial_dim = {}",
+            x0_view.ncols(),
+            expected_cols
+        )));
+    }
+    if n_steps == 0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "n_steps must be > 0",
+        ));
+    }
+    if !t_final.is_finite() || t_final <= 0.0 {
+        return Err(pyo3::exceptions::PyValueError::new_err(
+            "t_final must be a positive finite number",
+        ));
+    }
+
+    let x0_owned: Array2<f64> = x0_view.to_owned();
+    let model = CuckerSmale::new(spatial_dim, beta, sigma);
+
+    // Release the GIL for the duration of the integration so the Rust
+    // thread pool can run unimpeded and the Python interpreter stays
+    // responsive (e.g. during long sims in a Jupyter kernel).
+    let result = py
+        .allow_threads(|| euler_maruyama(&model, &x0_owned, t_final, n_steps, record_every, seed));
+
+    Ok(result.into_pyarray_bound(py))
+}
+
+#[pymodule]
+fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(simulate_cucker_smale, m)?)?;
+    m.add("__version__", env!("CARGO_PKG_VERSION"))?;
+    Ok(())
+}

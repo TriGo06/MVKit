@@ -1,0 +1,22 @@
+[workspace]
+members = ["crates/mvkit-core", "crates/mvkit-py"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/yourusername/mvkit"
+authors = ["Tristan <you@example.com>"]
+
+[workspace.dependencies]
+ndarray = "0.16"
+rayon = "1.10"
+rand = "0.8"
+rand_xoshiro = "0.6"
+rand_distr = "0.4"
+thiserror = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
