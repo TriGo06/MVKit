@@ -284,3 +284,100 @@ impl MeanFieldSDE for Kuramoto {
             });
     }
 }
+
+/// Mean-field Cox-Ingersoll-Ross (CIR) process on the half-line.
+///
+/// Each particle has scalar state and dynamics
+/// ```text
+/// dX_i = kappa (theta - X_i) dt + b (mean(X) - X_i) dt
+///        + sigma sqrt(max(X_i, 0)) dW_i
+/// ```
+/// where `mean(X) = (1/N) sum_j X_j`. The diffusion is square-root in the
+/// state, which makes Milstein non-trivial: `(d/dx)(sigma sqrt(x)) =
+/// 0.5 sigma / sqrt(x)`. The truncation `max(X_i, 0)` keeps the diffusion
+/// real if the discretization underflows below zero. With the Feller
+/// condition `2 kappa theta >= sigma^2`, the continuous-time process stays
+/// strictly positive and the truncation is rarely needed.
+///
+/// In the limit `b -> 0`, each particle is an independent classical CIR
+/// process and the marginal mean satisfies the closed form
+/// `E[X_t] = theta + (X_0 - theta) exp(-kappa t)`. We use this as a
+/// quantitative benchmark in the Milstein vs Euler test suite.
+///
+/// References: Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). *A
+/// theory of the term structure of interest rates*. Econometrica 53, 385-407,
+/// for the original CIR process. McKean-Vlasov extensions are standard
+/// (see Carmona and Delarue, 2018).
+pub struct MeanFieldCIR {
+    pub kappa: f64,
+    pub theta: f64,
+    pub b: f64,
+    pub sigma: f64,
+}
+
+impl MeanFieldCIR {
+    pub fn new(kappa: f64, theta: f64, b: f64, sigma: f64) -> Self {
+        Self {
+            kappa,
+            theta,
+            b,
+            sigma,
+        }
+    }
+}
+
+impl MeanFieldSDE for MeanFieldCIR {
+    fn dim(&self) -> usize {
+        1
+    }
+
+    fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+        let n = state.nrows();
+        let mean = state.column(0).sum() / n as f64;
+        let kappa = self.kappa;
+        let theta = self.theta;
+        let b = self.b;
+
+        out.axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(i, mut out_row)| {
+                let x = state[[i, 0]];
+                out_row[0] = kappa * (theta - x) + b * (mean - x);
+            });
+    }
+
+    fn diffusion(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+        let sigma = self.sigma;
+        out.axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(i, mut out_row)| {
+                let x = state[[i, 0]];
+                // Truncate at zero to keep sigma * sqrt(x) real if a
+                // discretization step pushed X below zero.
+                out_row[0] = sigma * x.max(0.0).sqrt();
+            });
+    }
+
+    fn diffusion_derivative(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+        // d/dx (sigma sqrt(x)) = 0.5 * sigma / sqrt(x), which diverges at
+        // x = 0. We floor x at a small positive eps so the derivative
+        // stays finite even when a particle is exactly at, or just below,
+        // zero. In the Milstein update the correction term is
+        // 0.5 * sigma * sigma_deriv * dt * (Z^2 - 1) = 0.25 * sigma^2 * dt * (Z^2 - 1)
+        // for x > 0, which matches the standard CIR Milstein scheme.
+        // When x <= 0, the diffusion itself is zero (truncated), so the
+        // entire correction term vanishes regardless of the floored
+        // derivative.
+        const EPS: f64 = 1e-12;
+        let sigma = self.sigma;
+        out.axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(i, mut out_row)| {
+                let x = state[[i, 0]];
+                out_row[0] = 0.5 * sigma / x.max(EPS).sqrt();
+            });
+    }
+}

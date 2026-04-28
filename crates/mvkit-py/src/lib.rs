@@ -2,18 +2,48 @@
 
 use pyo3::prelude::*;
 
-// Both pyfunctions live inside this submodule so that the
+// All pyfunctions live inside this submodule so that the
 // clippy::useless_conversion allow can be scoped to the macro-expanded
 // wrapper code that pyo3 0.22's #[pyfunction] generates as a sibling to
 // the user function. Function-level #[allow(...)] does not reach those
 // generated items, and we do not want a file-wide allow.
 #[allow(clippy::useless_conversion)]
 mod functions {
-    use mvkit_core::models::{CuckerSmale, Kuramoto, LinearQuadratic};
-    use mvkit_core::schemes::euler_maruyama;
-    use ndarray::Array2;
+    use mvkit_core::models::{CuckerSmale, Kuramoto, LinearQuadratic, MeanFieldCIR};
+    use mvkit_core::schemes::{euler_maruyama, milstein};
+    use mvkit_core::traits::MeanFieldSDE;
+    use ndarray::{Array2, Array3};
     use numpy::{IntoPyArray, PyArray3, PyReadonlyArray1, PyReadonlyArray2};
     use pyo3::prelude::*;
+
+    /// Run the requested scheme. Returns a clear `PyValueError` on an
+    /// unrecognized scheme name. The integration runs without the GIL
+    /// held; the caller should already have released it.
+    fn run_scheme<M: MeanFieldSDE>(
+        scheme: &str,
+        model: &M,
+        x0: &Array2<f64>,
+        t_final: f64,
+        n_steps: usize,
+        record_every: usize,
+        seed: u64,
+    ) -> PyResult<Array3<f64>> {
+        match scheme {
+            "euler" => Ok(euler_maruyama(
+                model,
+                x0,
+                t_final,
+                n_steps,
+                record_every,
+                seed,
+            )),
+            "milstein" => Ok(milstein(model, x0, t_final, n_steps, record_every, seed)),
+            other => Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "unknown scheme '{}', valid choices are 'euler' and 'milstein'",
+                other
+            ))),
+        }
+    }
 
     /// Simulate the Cucker-Smale flocking model.
     ///
@@ -28,6 +58,7 @@ mod functions {
         sigma = 0.1,
         record_every = 0,
         seed = 42,
+        scheme = "euler",
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_cucker_smale<'py>(
@@ -40,6 +71,7 @@ mod functions {
         sigma: f64,
         record_every: usize,
         seed: u64,
+        scheme: &str,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         let expected_cols = 2 * spatial_dim;
@@ -68,8 +100,16 @@ mod functions {
         // thread pool can run unimpeded and the Python interpreter stays
         // responsive (e.g. during long sims in a Jupyter kernel).
         let result = py.allow_threads(|| {
-            euler_maruyama(&model, &x0_owned, t_final, n_steps, record_every, seed)
-        });
+            run_scheme(
+                scheme,
+                &model,
+                &x0_owned,
+                t_final,
+                n_steps,
+                record_every,
+                seed,
+            )
+        })?;
 
         Ok(result.into_pyarray_bound(py))
     }
@@ -87,6 +127,7 @@ mod functions {
         sigma,
         record_every = 0,
         seed = 42,
+        scheme = "euler",
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_linear_quadratic<'py>(
@@ -99,6 +140,7 @@ mod functions {
         sigma: f64,
         record_every: usize,
         seed: u64,
+        scheme: &str,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         if x0_view.ncols() != 1 {
@@ -132,8 +174,16 @@ mod functions {
         let model = LinearQuadratic::new(a, b, sigma);
 
         let result = py.allow_threads(|| {
-            euler_maruyama(&model, &x0_owned, t_final, n_steps, record_every, seed)
-        });
+            run_scheme(
+                scheme,
+                &model,
+                &x0_owned,
+                t_final,
+                n_steps,
+                record_every,
+                seed,
+            )
+        })?;
 
         Ok(result.into_pyarray_bound(py))
     }
@@ -151,6 +201,7 @@ mod functions {
         sigma,
         record_every = 0,
         seed = 42,
+        scheme = "euler",
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_kuramoto<'py>(
@@ -163,6 +214,7 @@ mod functions {
         sigma: f64,
         record_every: usize,
         seed: u64,
+        scheme: &str,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         let omegas_view = omegas.as_array();
@@ -205,8 +257,100 @@ mod functions {
         let model = Kuramoto::new(coupling_k, omegas_owned, sigma);
 
         let result = py.allow_threads(|| {
-            euler_maruyama(&model, &x0_owned, t_final, n_steps, record_every, seed)
-        });
+            run_scheme(
+                scheme,
+                &model,
+                &x0_owned,
+                t_final,
+                n_steps,
+                record_every,
+                seed,
+            )
+        })?;
+
+        Ok(result.into_pyarray_bound(py))
+    }
+
+    /// Simulate the McKean-Vlasov CIR model.
+    ///
+    /// See `python/mvkit/__init__.py` for the user-facing docstring.
+    #[pyfunction]
+    #[pyo3(signature = (
+        x0,
+        t_final,
+        n_steps,
+        kappa,
+        theta,
+        b,
+        sigma,
+        record_every = 0,
+        seed = 42,
+        scheme = "euler",
+    ))]
+    #[allow(clippy::too_many_arguments)]
+    pub(super) fn simulate_mean_field_cir<'py>(
+        py: Python<'py>,
+        x0: PyReadonlyArray2<'py, f64>,
+        t_final: f64,
+        n_steps: usize,
+        kappa: f64,
+        theta: f64,
+        b: f64,
+        sigma: f64,
+        record_every: usize,
+        seed: u64,
+        scheme: &str,
+    ) -> PyResult<Bound<'py, PyArray3<f64>>> {
+        let x0_view = x0.as_array();
+        if x0_view.ncols() != 1 {
+            return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                "x0 has {} columns, expected 1 (CIR state is scalar)",
+                x0_view.ncols()
+            )));
+        }
+        if n_steps == 0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "n_steps must be > 0",
+            ));
+        }
+        if !t_final.is_finite() || t_final <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "t_final must be a positive finite number",
+            ));
+        }
+        if !kappa.is_finite() || kappa <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "kappa must be a positive finite number",
+            ));
+        }
+        if !theta.is_finite() || theta <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "theta must be a positive finite number",
+            ));
+        }
+        if !b.is_finite() {
+            return Err(pyo3::exceptions::PyValueError::new_err("b must be finite"));
+        }
+        if !sigma.is_finite() || sigma <= 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "sigma must be a positive finite number",
+            ));
+        }
+
+        let x0_owned: Array2<f64> = x0_view.to_owned();
+        let model = MeanFieldCIR::new(kappa, theta, b, sigma);
+
+        let result = py.allow_threads(|| {
+            run_scheme(
+                scheme,
+                &model,
+                &x0_owned,
+                t_final,
+                n_steps,
+                record_every,
+                seed,
+            )
+        })?;
 
         Ok(result.into_pyarray_bound(py))
     }
@@ -217,6 +361,7 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(functions::simulate_cucker_smale, m)?)?;
     m.add_function(wrap_pyfunction!(functions::simulate_linear_quadratic, m)?)?;
     m.add_function(wrap_pyfunction!(functions::simulate_kuramoto, m)?)?;
+    m.add_function(wrap_pyfunction!(functions::simulate_mean_field_cir, m)?)?;
     m.add("__version__", env!("CARGO_PKG_VERSION"))?;
     Ok(())
 }

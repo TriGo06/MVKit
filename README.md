@@ -17,15 +17,16 @@ When $N \to \infty$, each particle converges in law to the McKean-Vlasov SDE tha
 
 Early alpha (v0.1). The current scope:
 
-- Generic mean-field SDE trait (`MeanFieldSDE`)
-- Euler-Maruyama integrator with Rayon-parallel particle updates
+- Generic mean-field SDE trait (`MeanFieldSDE`) with state-dependent diagonal diffusion
+- Euler-Maruyama and Milstein integrators with Rayon-parallel particle updates. Selected via `scheme="euler"` (default) or `scheme="milstein"` on every `simulate_*` entry point. On constant-diffusion models, Milstein reduces to Euler exactly because the diffusion derivative is zero; the two schemes produce bit-exact identical trajectories there.
 - Built-in **Cucker-Smale** flocking model (any spatial dimension)
 - Built-in **linear-quadratic** McKean-Vlasov model with closed-form Gaussian moments, used as a quantitative weak-order benchmark for the integrator
 - Built-in **Kuramoto** model of coupled phase oscillators with O(N) drift via the order-parameter trick
+- Built-in **mean-field Cox-Ingersoll-Ross** model with square-root diffusion: the first model with non-trivial state-dependent diffusion, used to exercise the Milstein correction term
 - Reproducible seeded RNG (Xoshiro256++)
 - PyO3 bindings, abi3 wheels for Python 3.9+
 
-Roadmap (non-binding) for v0.2 and beyond: Milstein and tamed schemes, kernel-based interactions via FFT, Kuramoto, propagation-of-chaos rate estimation tools, MFG fixed-point iterations.
+Roadmap (non-binding) for v0.2 and beyond: tamed schemes, kernel-based interactions via FFT, propagation-of-chaos rate estimation tools, strong-error tests via shared Brownian increments, MFG fixed-point iterations.
 
 ## Install (from source)
 
@@ -111,6 +112,24 @@ The drift is implemented in $O(N)$ per time step via the trig identity $\sum_j \
 Reference: Kuramoto, Y. (1975). *Self-entrainment of a population of coupled non-linear oscillators*. International Symposium on Mathematical Problems in Theoretical Physics.
 
 See `examples/kuramoto_demo.py` for a runnable visualization showing phase trajectories and $r(t)$ on either side of $K_c$.
+
+## Math summary: mean-field CIR
+
+Each particle has scalar state $X_i \ge 0$ with dynamics
+
+$$
+\mathrm{d}X_i = \kappa(\theta - X_i)\,\mathrm{d}t + b\,(\bar X - X_i)\,\mathrm{d}t + \sigma\sqrt{\max(X_i, 0)}\,\mathrm{d}W_i,
+$$
+
+where $\bar X = (1/N)\sum_j X_j$. The first drift term is the standard CIR mean-reversion towards $\theta$ at rate $\kappa$; the second is the McKean-Vlasov interaction. The diffusion is square-root in the state, which is what makes Milstein non-trivial on this model: the diagonal Jacobian $(\sigma\sqrt{x})' = 0.5 \sigma / \sqrt{x}$ is non-zero, so the Milstein correction term $\tfrac{1}{2}\sigma\sigma'\,\mathrm{d}t (Z^2 - 1)$ fires and modifies trajectories pathwise.
+
+The truncation $\max(X_i, 0)$ keeps the diffusion real if a discretization step underflows below zero. The Feller condition $2\kappa\theta \ge \sigma^2$ guarantees that the continuous-time process stays strictly positive.
+
+In the limit $b \to 0$, each particle is an independent classical CIR process and the marginal mean satisfies the closed form $\mathbb{E}[X_t] = \theta + (X_0 - \theta) e^{-\kappa t}$, used in the test suite as a smoke check of both schemes.
+
+A note on Milstein's improvement. Milstein has strong order 1 (vs Euler's strong order 1/2), but on weak error of smooth functionals of $X_T$ both schemes are order 1; the constants of the leading $O(\mathrm{d}t)$ terms can go either way depending on the functional, and on CIR the Milstein-only contribution to $E[X_{n+1}^2 \mid X_n]$ is $+\tfrac{1}{8}\sigma^4\,\mathrm{d}t^2$, i.e. very slightly worse on the second moment by an $O(\mathrm{d}t^2)$ amount. The strong-order-1 improvement only shows up on pathwise error or non-smooth functionals (barrier hits, trajectory maxima). A clean strong-error test on CIR requires sharing Brownian increments between coarse-dt and fine-dt runs, which we have deferred.
+
+References: Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). *A theory of the term structure of interest rates*. Econometrica 53, 385-407. McKean-Vlasov extensions are standard, see Carmona and Delarue (2018).
 
 ## Benchmarks
 

@@ -16,6 +16,7 @@ __all__ = [
     "simulate_cucker_smale",
     "simulate_kuramoto",
     "simulate_linear_quadratic",
+    "simulate_mean_field_cir",
 ]
 
 
@@ -28,6 +29,7 @@ def simulate_cucker_smale(
     sigma: float = 0.1,
     record_every: int = 0,
     seed: int = 42,
+    scheme: str = "euler",
 ) -> np.ndarray:
     r"""Simulate the Cucker-Smale flocking model.
 
@@ -64,6 +66,11 @@ def simulate_cucker_smale(
         states are stored.
     seed : int, default 42
         RNG seed. Identical seeds give bit-exact identical trajectories.
+    scheme : str, default "euler"
+        Integrator to use: ``"euler"`` (Euler-Maruyama) or ``"milstein"``
+        (Milstein). On constant-diffusion models like Cucker-Smale,
+        Milstein reduces to Euler exactly because the diffusion derivative
+        is zero; both schemes produce bit-exact identical trajectories.
 
     Returns
     -------
@@ -87,6 +94,7 @@ def simulate_cucker_smale(
         float(sigma),
         int(record_every),
         int(seed),
+        str(scheme),
     )
 
 
@@ -99,6 +107,7 @@ def simulate_linear_quadratic(
     sigma: float,
     record_every: int = 0,
     seed: int = 42,
+    scheme: str = "euler",
 ) -> np.ndarray:
     r"""Simulate the linear-quadratic McKean-Vlasov model.
 
@@ -168,6 +177,7 @@ def simulate_linear_quadratic(
         float(sigma),
         int(record_every),
         int(seed),
+        str(scheme),
     )
 
 
@@ -180,6 +190,7 @@ def simulate_kuramoto(
     sigma: float,
     record_every: int = 0,
     seed: int = 42,
+    scheme: str = "euler",
 ) -> np.ndarray:
     r"""Simulate the Kuramoto model of coupled phase oscillators.
 
@@ -274,4 +285,111 @@ def simulate_kuramoto(
         float(sigma),
         int(record_every),
         int(seed),
+        str(scheme),
+    )
+
+
+def simulate_mean_field_cir(
+    x0: np.ndarray,
+    t_final: float,
+    n_steps: int,
+    kappa: float,
+    theta: float,
+    b: float,
+    sigma: float,
+    record_every: int = 0,
+    seed: int = 42,
+    scheme: str = "euler",
+) -> np.ndarray:
+    r"""Simulate the McKean-Vlasov Cox-Ingersoll-Ross model.
+
+    Each particle has scalar state :math:`X_i \ge 0` with dynamics
+
+    .. math::
+        \mathrm{d}X_i = \kappa(\theta - X_i)\,\mathrm{d}t
+            + b\,(\bar X - X_i)\,\mathrm{d}t
+            + \sigma\, \sqrt{\max(X_i, 0)}\, \mathrm{d}W_i,
+
+    where :math:`\bar X = (1/N)\sum_j X_j` is the empirical mean. The first
+    drift term is the standard CIR mean-reversion towards :math:`\theta` at
+    rate :math:`\kappa`; the second is the McKean-Vlasov interaction. The
+    diffusion is square-root in the state, which makes Milstein non-trivial.
+
+    The truncation :math:`\max(X_i, 0)` keeps the diffusion real if a
+    discretization step underflows below zero. The Feller condition
+    :math:`2\kappa\theta \ge \sigma^2` guarantees that the continuous-time
+    process stays strictly positive, in which case the truncation is rarely
+    activated.
+
+    In the limit :math:`b = 0`, the interaction term vanishes and each
+    particle is an independent classical CIR process. The marginal mean
+    then satisfies the closed-form ODE solution
+
+    .. math::
+        \mathbb{E}[X_t] = \theta + (X_0 - \theta) \exp(-\kappa t),
+
+    used as a quantitative benchmark for Milstein vs Euler in the test
+    suite.
+
+    Parameters
+    ----------
+    x0 : ndarray, shape (N, 1)
+        Initial states. Should be non-negative.
+    t_final : float
+        Final integration time.
+    n_steps : int
+        Number of integration steps. ``dt = t_final / n_steps``.
+    kappa : float
+        Mean-reversion rate. Must be positive.
+    theta : float
+        Long-run mean. Must be positive.
+    b : float
+        Mean-field interaction coefficient. Set to 0 to recover independent
+        classical CIR.
+    sigma : float
+        Diffusion strength on the square-root noise term. Must be positive.
+    record_every : int, default 0
+        Record state every ``k`` steps. If 0, only the initial and final
+        states are stored.
+    seed : int, default 42
+        RNG seed. Identical seeds give bit-exact identical trajectories.
+    scheme : str, default "euler"
+        Integrator: ``"euler"`` for Euler-Maruyama or ``"milstein"`` for
+        Milstein. Milstein has a smaller bias on this model thanks to its
+        strong-order-1 correction term :math:`0.25 \sigma^2 dt (Z^2 - 1)`,
+        which is non-trivial here because the diffusion derivative
+        :math:`d/dx (\sigma \sqrt{x}) = 0.5 \sigma / \sqrt{x}` is non-zero.
+
+    Returns
+    -------
+    history : ndarray, shape (n_recorded, N, 1)
+        Recorded trajectories.
+
+    References
+    ----------
+    Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). A theory of the
+    term structure of interest rates. Econometrica 53, 385-407.
+
+    Carmona, R. and Delarue, F. (2018). Probabilistic Theory of Mean Field
+    Games with Applications I & II. Springer. (For the McKean-Vlasov
+    extension.)
+    """
+    x0 = np.ascontiguousarray(x0, dtype=np.float64)
+    if x0.ndim != 2:
+        raise ValueError(f"x0 must be 2D, got shape {x0.shape}")
+    if x0.shape[1] != 1:
+        raise ValueError(
+            f"x0 has {x0.shape[1]} columns, expected 1 (scalar state)"
+        )
+    return _core.simulate_mean_field_cir(
+        x0,
+        float(t_final),
+        int(n_steps),
+        float(kappa),
+        float(theta),
+        float(b),
+        float(sigma),
+        int(record_every),
+        int(seed),
+        str(scheme),
     )

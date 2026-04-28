@@ -11,6 +11,7 @@ def simulate_cucker_smale(
     sigma: float = ...,
     record_every: int = ...,
     seed: int = ...,
+    scheme: str = ...,
 ) -> np.ndarray: ...
 def simulate_linear_quadratic(
     x0: np.ndarray,
@@ -21,6 +22,7 @@ def simulate_linear_quadratic(
     sigma: float,
     record_every: int = ...,
     seed: int = ...,
+    scheme: str = ...,
 ) -> np.ndarray: ...
 def simulate_kuramoto(
     x0: np.ndarray,
@@ -31,4 +33,17 @@ def simulate_kuramoto(
     sigma: float,
     record_every: int = ...,
     seed: int = ...,
+    scheme: str = ...,
+) -> np.ndarray: ...
+def simulate_mean_field_cir(
+    x0: np.ndarray,
+    t_final: float,
+    n_steps: int,
+    kappa: float,
+    theta: float,
+    b: float,
+    sigma: float,
+    record_every: int = ...,
+    seed: int = ...,
+    scheme: str = ...,
 ) -> np.ndarray: ...

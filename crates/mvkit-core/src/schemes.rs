@@ -106,6 +106,110 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     history
 }
 
+/// Milstein integrator for diagonal mean-field SDEs.
+///
+/// For an SDE with diagonal diffusion `dX^k = b^k dt + sigma^k dW^k`, the
+/// Milstein update reads
+/// ```text
+/// X_{n+1}^k = X_n^k + b^k dt + sigma^k sqrt(dt) Z^k
+///                  + 0.5 sigma^k (sigma^k)' dt (Z^k^2 - 1)
+/// ```
+/// where `(sigma^k)' = d sigma^k / d X_i^k` is the diagonal of the
+/// diffusion Jacobian. The new term gives strong order 1 (vs Euler's
+/// strong order 1/2). When the diffusion is constant in state (the
+/// default `diffusion_derivative` returns zero), the correction vanishes
+/// and the scheme reduces to Euler-Maruyama exactly.
+///
+/// Determinism contract: same `seed`, same `n_steps`, same model state
+/// gives bit-exact identical noise samples to `euler_maruyama` thanks to
+/// the shared sequential noise-sampling strategy. On any model whose
+/// `diffusion_derivative` returns zero, `milstein` and `euler_maruyama`
+/// produce bit-exact identical trajectories.
+///
+/// Same arguments and return shape as [`euler_maruyama`].
+pub fn milstein<M: MeanFieldSDE>(
+    model: &M,
+    x0: &Array2<f64>,
+    t_final: f64,
+    n_steps: usize,
+    record_every: usize,
+    seed: u64,
+) -> Array3<f64> {
+    assert_eq!(x0.ncols(), model.dim(), "state dim mismatch");
+    assert!(n_steps > 0, "n_steps must be > 0");
+    assert!(t_final > 0.0, "t_final must be > 0");
+
+    let n = x0.nrows();
+    let d = model.dim();
+    let dt = t_final / n_steps as f64;
+    let sqrt_dt = dt.sqrt();
+    let half_dt = 0.5 * dt;
+
+    #[allow(
+        unknown_lints,
+        clippy::manual_is_multiple_of,
+        clippy::manual_checked_ops
+    )]
+    let n_recorded = if record_every == 0 {
+        2
+    } else {
+        let regular = n_steps / record_every;
+        let needs_final = n_steps % record_every != 0;
+        1 + regular + usize::from(needs_final)
+    };
+
+    let mut history = Array3::<f64>::zeros((n_recorded, n, d));
+    history.index_axis_mut(Axis(0), 0).assign(x0);
+
+    let mut state: Array2<f64> = x0.clone();
+    let mut drift_buf = Array2::<f64>::zeros((n, d));
+    let mut noise_buf = Array2::<f64>::zeros((n, d));
+    let mut sigma_buf = Array2::<f64>::zeros((n, d));
+    let mut sigma_deriv_buf = Array2::<f64>::zeros((n, d));
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+
+    let mut record_idx = 1usize;
+
+    for step in 1..=n_steps {
+        for v in noise_buf.iter_mut() {
+            *v = StandardNormal.sample(&mut rng);
+        }
+
+        model.drift(state.view(), drift_buf.view_mut());
+        model.diffusion(state.view(), sigma_buf.view_mut());
+        model.diffusion_derivative(state.view(), sigma_deriv_buf.view_mut());
+
+        // x <- x + b dt + sigma sqrt(dt) Z + 0.5 sigma sigma' dt (Z^2 - 1).
+        // Parallel over rows; each row reads only its own buffers.
+        Zip::from(state.rows_mut())
+            .and(drift_buf.rows())
+            .and(noise_buf.rows())
+            .and(sigma_buf.rows())
+            .and(sigma_deriv_buf.rows())
+            .par_for_each(|mut s_row, b_row, z_row, sigma_row, sigma_deriv_row| {
+                for k in 0..d {
+                    let sigma_k = sigma_row[k];
+                    let z_k = z_row[k];
+                    let correction = half_dt * sigma_k * sigma_deriv_row[k] * (z_k * z_k - 1.0);
+                    s_row[k] += b_row[k] * dt + sigma_k * sqrt_dt * z_k + correction;
+                }
+            });
+
+        let should_record = if record_every == 0 {
+            step == n_steps
+        } else {
+            (step % record_every == 0) || step == n_steps
+        };
+        if should_record {
+            debug_assert!(record_idx < n_recorded);
+            history.index_axis_mut(Axis(0), record_idx).assign(&state);
+            record_idx += 1;
+        }
+    }
+
+    history
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
