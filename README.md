@@ -20,10 +20,11 @@ Early alpha (v0.1). The current scope:
 - Generic mean-field SDE trait (`MeanFieldSDE`)
 - Euler-Maruyama integrator with Rayon-parallel particle updates
 - Built-in **Cucker-Smale** flocking model (any spatial dimension)
+- Built-in **linear-quadratic** McKean-Vlasov model with closed-form Gaussian moments, used as a quantitative weak-order benchmark for the integrator
 - Reproducible seeded RNG (Xoshiro256++)
 - PyO3 bindings, abi3 wheels for Python 3.9+
 
-Roadmap (non-binding) for v0.2 and beyond: Milstein and tamed schemes, kernel-based interactions via FFT, McKean-Vlasov linear-quadratic model with closed-form benchmark, Kuramoto, propagation-of-chaos rate estimation tools, MFG fixed-point iterations.
+Roadmap (non-binding) for v0.2 and beyond: Milstein and tamed schemes, kernel-based interactions via FFT, Kuramoto, propagation-of-chaos rate estimation tools, MFG fixed-point iterations.
 
 ## Install (from source)
 
@@ -66,6 +67,16 @@ print(history.shape)  # (101, 500, 4)
 ```
 
 See `examples/cucker_smale_demo.py` for a runnable visualization.
+
+## Math summary: linear-quadratic McKean-Vlasov
+
+Each particle has scalar state with dynamics
+
+$$
+\mathrm{d}X_i = (a\, X_i + b\, \bar X)\,\mathrm{d}t + \sigma\,\mathrm{d}W_i,
+$$
+
+where $\bar X = (1/N)\sum_j X_j$. If the initial law is Gaussian, the marginal law stays Gaussian for all $t$, with mean $m(t) = m_0 \exp((a+b) t)$ and variance $v(t) = v_0 \exp(2at) + \sigma^2 (\exp(2at) - 1)/(2a)$. These closed-form moments make the model a clean benchmark for the weak order of any integrator; the test suite fits the log-log slope of $|E[\bar X^h_T] - m(T)|$ and the analogous variance error against $\mathrm{d}t$, and asserts a slope of 1 (Talay and Tubaro, 1990).
 
 ## Math summary: Cucker-Smale
 
