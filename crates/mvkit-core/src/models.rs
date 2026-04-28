@@ -7,6 +7,16 @@ use rand_distr::{Distribution, Normal};
 use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
 
+/// Internal helper: write a per-coordinate constant diffusion vector into
+/// every row of an `(N, dim)` output buffer. Used by all the
+/// constant-diffusion models below to implement `MeanFieldSDE::diffusion`.
+fn fill_constant_diffusion(values: &[f64], mut out: ArrayViewMut2<f64>) {
+    debug_assert_eq!(values.len(), out.ncols());
+    for (k, &v) in values.iter().enumerate() {
+        out.column_mut(k).fill(v);
+    }
+}
+
 /// Linear-quadratic McKean-Vlasov model on the real line.
 ///
 /// Each particle has scalar state and dynamics
@@ -51,10 +61,6 @@ impl MeanFieldSDE for LinearQuadratic {
         1
     }
 
-    fn sigma(&self) -> &[f64] {
-        &self.sigma
-    }
-
     fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
         let n = state.nrows();
         // Empirical mean. Sequential add over a single column is already
@@ -70,6 +76,10 @@ impl MeanFieldSDE for LinearQuadratic {
             .for_each(|(i, mut out_row)| {
                 out_row[0] = a * state[[i, 0]] + b_mean;
             });
+    }
+
+    fn diffusion(&self, _state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
+        fill_constant_diffusion(&self.sigma, out);
     }
 }
 
@@ -118,8 +128,8 @@ impl MeanFieldSDE for CuckerSmale {
         2 * self.spatial_dim
     }
 
-    fn sigma(&self) -> &[f64] {
-        &self.sigma
+    fn diffusion(&self, _state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
+        fill_constant_diffusion(&self.sigma, out);
     }
 
     fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
@@ -233,8 +243,8 @@ impl MeanFieldSDE for Kuramoto {
         1
     }
 
-    fn sigma(&self) -> &[f64] {
-        &self.sigma
+    fn diffusion(&self, _state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
+        fill_constant_diffusion(&self.sigma, out);
     }
 
     fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {

@@ -36,10 +36,6 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     let dt = t_final / n_steps as f64;
     let sqrt_dt = dt.sqrt();
 
-    let sigma = model.sigma();
-    assert_eq!(sigma.len(), d, "sigma length must equal dim()");
-    let sigma_arr = ndarray::Array1::from(sigma.to_vec());
-
     // Original division-and-remainder form, kept verbatim so this crate
     // builds on Rust toolchains older than 1.87 (the stabilization of
     // is_multiple_of). Two recent clippy lints would otherwise rewrite
@@ -66,6 +62,7 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     let mut state: Array2<f64> = x0.clone();
     let mut drift_buf = Array2::<f64>::zeros((n, d));
     let mut noise_buf = Array2::<f64>::zeros((n, d));
+    let mut sigma_buf = Array2::<f64>::zeros((n, d));
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
 
     let mut record_idx = 1usize;
@@ -78,17 +75,19 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
             *v = StandardNormal.sample(&mut rng);
         }
 
-        // Drift: parallel over particles (rows). The model is responsible for
-        // any further internal parallelism if it wants.
+        // Drift and diffusion are filled by the model. They may be parallel
+        // internally; the integrator only relies on row independence.
         model.drift(state.view(), drift_buf.view_mut());
+        model.diffusion(state.view(), sigma_buf.view_mut());
 
         // x <- x + b dt + sigma sqrt(dt) Z, parallel update over rows.
         Zip::from(state.rows_mut())
             .and(drift_buf.rows())
             .and(noise_buf.rows())
-            .par_for_each(|mut s_row, b_row, z_row| {
+            .and(sigma_buf.rows())
+            .par_for_each(|mut s_row, b_row, z_row, sigma_row| {
                 for k in 0..d {
-                    s_row[k] += b_row[k] * dt + sigma_arr[k] * sqrt_dt * z_row[k];
+                    s_row[k] += b_row[k] * dt + sigma_row[k] * sqrt_dt * z_row[k];
                 }
             });
 
