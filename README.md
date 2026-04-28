@@ -89,6 +89,21 @@ $$
 
 with kernel $K(r) = (1 + r^2)^{-\beta}$. The deterministic part conserves the mean velocity $\bar v = \frac{1}{N}\sum_i v_i$, used as a sanity check in the test suite. For $\beta < 1/2$, velocities concentrate around $\bar v$ unconditionally (Cucker and Smale, 2007).
 
+## Benchmarks
+
+Criterion benchmarks track Euler-Maruyama throughput in particle-steps per second. Run them from the workspace root:
+
+```bash
+cargo bench --bench integrators
+```
+
+Each suite reports throughput via `Throughput::Elements(N * n_steps)` so Criterion prints the unit directly. HTML reports land under `target/criterion/` and are gitignored alongside the rest of `target/`. Indicative numbers on an Apple-silicon laptop, single process:
+
+- Linear-quadratic (cheap drift): ~14 M particle-steps/s at N=1000, ~96 M at N=10000, ~316 M at N=100000. The sub-linear region at small N is dominated by sequential noise sampling and parallel-launch overhead; once N is large enough to amortize that, the integrator scales near-linearly with the rayon pool.
+- Cucker-Smale (O(N^2) pairwise drift): ~940 K at N=100, ~460 K at N=500, ~130 K at N=2000. The drift cost dominates once N grows; an FFT-convolution path for translation-invariant kernels is on the roadmap.
+
+The benchmarks are not part of CI by default; they are too noisy on shared GitHub runners. A manual workflow at `.github/workflows/bench.yml` (triggered via the Actions tab) runs them on `ubuntu-latest` and uploads the HTML report as an artifact.
+
 ## Architecture
 
 ```

@@ -1,0 +1,21 @@
+name: Bench
+
+on:
+  workflow_dispatch:
+
+jobs:
+  bench:
+    name: criterion on ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: cargo bench
+        run: cargo bench --bench integrators
+      - name: upload criterion report
+        uses: actions/upload-artifact@v4
+        with:
+          name: criterion-report
+          path: target/criterion/
+          if-no-files-found: error
