@@ -110,8 +110,32 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::{CuckerSmale, LinearQuadratic};
+    use crate::models::{CuckerSmale, Kuramoto, LinearQuadratic};
     use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn kuramoto_free_rotation_uncoupled_noiseless() {
+        // K = 0, sigma = 0, deterministic ICs and explicit omegas. Each
+        // phase obeys the trivial ODE dtheta_i/dt = omega_i, exact under
+        // Euler since the drift is constant in time. After T = 1.0 the
+        // discretized solution should match theta_i(0) + omega_i * T to
+        // floating-point accuracy.
+        let n = 100usize;
+        let omegas = ndarray::Array1::from_iter((0..n).map(|i| 0.1 * (i as f64)));
+        let model = Kuramoto::new(0.0, omegas.clone(), 0.0);
+
+        let mut x0 = ndarray::Array2::<f64>::zeros((n, 1));
+        for i in 0..n {
+            x0[[i, 0]] = 0.05 * (i as f64);
+        }
+        let t_final = 1.0;
+        let hist = euler_maruyama(&model, &x0, t_final, 1000, 0, 99);
+        let final_state = hist.index_axis(Axis(0), hist.shape()[0] - 1);
+        for i in 0..n {
+            let expected = x0[[i, 0]] + omegas[i] * t_final;
+            assert_abs_diff_eq!(final_state[[i, 0]], expected, epsilon = 1e-12);
+        }
+    }
 
     #[test]
     fn lq_no_noise_mean_follows_exponential() {

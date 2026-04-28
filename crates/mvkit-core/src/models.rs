@@ -1,7 +1,10 @@
 //! Built-in mean-field models.
 
 use crate::traits::MeanFieldSDE;
-use ndarray::{s, ArrayView2, ArrayViewMut2, Axis};
+use ndarray::{s, Array1, ArrayView2, ArrayViewMut2, Axis};
+use rand::SeedableRng;
+use rand_distr::{Distribution, Normal};
+use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::prelude::*;
 
 /// Linear-quadratic McKean-Vlasov model on the real line.
@@ -157,6 +160,117 @@ impl MeanFieldSDE for CuckerSmale {
                 for k in 0..d {
                     out_row[d + k] = n_inv * accum[k];
                 }
+            });
+    }
+}
+
+/// Kuramoto coupled phase oscillators on the real line.
+///
+/// Each particle has a scalar phase `theta_i` (left unwrapped; the user can
+/// reduce mod `2 pi` for visualization). The dynamics are
+/// ```text
+/// dtheta_i = omega_i dt + (K / N) sum_j sin(theta_j - theta_i) dt
+///                       + sigma dW_i
+/// ```
+/// where `omega_i` are heterogeneous natural frequencies and `K` is the
+/// coupling strength. The synchronization of the population is captured by
+/// the order parameter
+/// ```text
+/// r(t) e^{i psi(t)} = (1/N) sum_j exp(i theta_j(t))
+/// ```
+/// with `r in [0, 1]`. For Gaussian `omega_i ~ N(0, omega_std^2)` the
+/// classical critical coupling is `K_c = 2 omega_std sqrt(2 / pi)`: below
+/// `K_c` the population stays incoherent (`r -> 0`), above it a fraction of
+/// oscillators lock and `r` stabilizes between 0 and 1.
+///
+/// The drift is implemented in O(N) per time step using the trig identity
+/// `sum_j sin(theta_j - theta_i) = S cos(theta_i) - C sin(theta_i)` with
+/// `C = sum_j cos(theta_j)` and `S = sum_j sin(theta_j)`. A naive O(N^2)
+/// nested-loop form is intentionally avoided; the reduction is sequential
+/// (deterministic, single pass) and only the per-particle application is
+/// parallelized.
+///
+/// Reference: Kuramoto, Y. (1975). *Self-entrainment of a population of
+/// coupled non-linear oscillators*. International Symposium on Mathematical
+/// Problems in Theoretical Physics.
+pub struct Kuramoto {
+    pub coupling_k: f64,
+    pub omegas: Array1<f64>,
+    sigma: Vec<f64>,
+}
+
+impl Kuramoto {
+    /// Create a Kuramoto model with the given coupling, frequency vector
+    /// and constant scalar diffusion. `omegas.len()` must equal the number
+    /// of particles passed to `drift` (checked at simulation time).
+    pub fn new(coupling_k: f64, omegas: Array1<f64>, sigma: f64) -> Self {
+        Self {
+            coupling_k,
+            omegas,
+            sigma: vec![sigma],
+        }
+    }
+
+    /// Convenience constructor: `n_particles` natural frequencies sampled
+    /// i.i.d. from a centered Gaussian with standard deviation `omega_std`,
+    /// using a deterministic Xoshiro256++ seeded by `seed`.
+    pub fn with_gaussian_omegas(
+        coupling_k: f64,
+        n_particles: usize,
+        omega_std: f64,
+        sigma: f64,
+        seed: u64,
+    ) -> Self {
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+        let dist = Normal::new(0.0, omega_std).expect("omega_std must be finite and >= 0");
+        let omegas = Array1::from_iter((0..n_particles).map(|_| dist.sample(&mut rng)));
+        Self::new(coupling_k, omegas, sigma)
+    }
+}
+
+impl MeanFieldSDE for Kuramoto {
+    fn dim(&self) -> usize {
+        1
+    }
+
+    fn sigma(&self) -> &[f64] {
+        &self.sigma
+    }
+
+    fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+        let n = state.nrows();
+        assert_eq!(
+            n,
+            self.omegas.len(),
+            "Kuramoto drift: state has {} rows but omegas has {} entries",
+            n,
+            self.omegas.len()
+        );
+
+        // Pass 1: reduction over the single phase column. Sequential and
+        // single-threaded so the floating-point summation order is fixed,
+        // which the integrator's reproducibility contract relies on.
+        let mut sum_cos = 0.0_f64;
+        let mut sum_sin = 0.0_f64;
+        for i in 0..n {
+            let theta = state[[i, 0]];
+            sum_cos += theta.cos();
+            sum_sin += theta.sin();
+        }
+
+        let k_over_n = self.coupling_k / n as f64;
+        let omegas = &self.omegas;
+
+        // Pass 2: per-particle application, parallel over rows. Each row
+        // depends only on the row's own theta and the two reduction
+        // scalars, so there is no cross-row data dependency.
+        out.axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(i, mut out_row)| {
+                let theta = state[[i, 0]];
+                let interaction = sum_sin * theta.cos() - sum_cos * theta.sin();
+                out_row[0] = omegas[i] + k_over_n * interaction;
             });
     }
 }

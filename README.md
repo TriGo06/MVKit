@@ -21,6 +21,7 @@ Early alpha (v0.1). The current scope:
 - Euler-Maruyama integrator with Rayon-parallel particle updates
 - Built-in **Cucker-Smale** flocking model (any spatial dimension)
 - Built-in **linear-quadratic** McKean-Vlasov model with closed-form Gaussian moments, used as a quantitative weak-order benchmark for the integrator
+- Built-in **Kuramoto** model of coupled phase oscillators with O(N) drift via the order-parameter trick
 - Reproducible seeded RNG (Xoshiro256++)
 - PyO3 bindings, abi3 wheels for Python 3.9+
 
@@ -88,6 +89,28 @@ $$
 $$
 
 with kernel $K(r) = (1 + r^2)^{-\beta}$. The deterministic part conserves the mean velocity $\bar v = \frac{1}{N}\sum_i v_i$, used as a sanity check in the test suite. For $\beta < 1/2$, velocities concentrate around $\bar v$ unconditionally (Cucker and Smale, 2007).
+
+## Math summary: Kuramoto
+
+Each particle has a scalar phase $\theta_i \in \mathbb{R}$ (left unwrapped during integration; the user can reduce mod $2\pi$ for visualization). The dynamics:
+
+$$
+\mathrm{d}\theta_i = \omega_i\,\mathrm{d}t + \frac{K}{N}\sum_{j=1}^N \sin(\theta_j - \theta_i)\,\mathrm{d}t + \sigma\,\mathrm{d}W_i,
+$$
+
+where $\omega_i$ are heterogeneous natural frequencies and $K$ is the coupling strength. Synchronization is captured by the Kuramoto order parameter
+
+$$
+r(t)\, e^{i\psi(t)} = \frac{1}{N}\sum_{j=1}^N e^{i\theta_j(t)},
+$$
+
+with $r \in [0, 1]$. For Gaussian $\omega_i \sim N(0, \sigma_\omega^2)$ the classical critical coupling is $K_c = 2\sigma_\omega \sqrt{2/\pi}$. Below $K_c$ the population stays incoherent ($r \to 0$ as $N \to \infty$); above $K_c$ a fraction of oscillators lock and $r$ stabilizes between 0 and 1, with the mean-field prediction $r_\infty \approx \sqrt{1 - K_c / K}$ for $K$ slightly above $K_c$.
+
+The drift is implemented in $O(N)$ per time step via the trig identity $\sum_j \sin(\theta_j - \theta_i) = S\cos(\theta_i) - C\sin(\theta_i)$ with $C = \sum_j \cos(\theta_j)$ and $S = \sum_j \sin(\theta_j)$: a sequential reduction over the phase column gives $C, S$, then a parallel-over-rows application sets each particle's drift in constant time. A naive nested-loop form is intentionally avoided; on the test cases it would be ~1000x slower.
+
+Reference: Kuramoto, Y. (1975). *Self-entrainment of a population of coupled non-linear oscillators*. International Symposium on Mathematical Problems in Theoretical Physics.
+
+See `examples/kuramoto_demo.py` for a runnable visualization showing phase trajectories and $r(t)$ on either side of $K_c$.
 
 ## Benchmarks
 

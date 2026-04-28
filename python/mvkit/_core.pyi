@@ -22,3 +22,13 @@ def simulate_linear_quadratic(
     record_every: int = ...,
     seed: int = ...,
 ) -> np.ndarray: ...
+def simulate_kuramoto(
+    x0: np.ndarray,
+    t_final: float,
+    n_steps: int,
+    coupling_k: float,
+    omegas: np.ndarray,
+    sigma: float,
+    record_every: int = ...,
+    seed: int = ...,
+) -> np.ndarray: ...

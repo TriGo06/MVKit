@@ -12,7 +12,11 @@ import numpy as np
 from . import _core
 
 __version__ = _core.__version__
-__all__ = ["simulate_cucker_smale", "simulate_linear_quadratic"]
+__all__ = [
+    "simulate_cucker_smale",
+    "simulate_kuramoto",
+    "simulate_linear_quadratic",
+]
 
 
 def simulate_cucker_smale(
@@ -161,6 +165,112 @@ def simulate_linear_quadratic(
         int(n_steps),
         float(a),
         float(b),
+        float(sigma),
+        int(record_every),
+        int(seed),
+    )
+
+
+def simulate_kuramoto(
+    x0: np.ndarray,
+    t_final: float,
+    n_steps: int,
+    coupling_k: float,
+    omegas: np.ndarray,
+    sigma: float,
+    record_every: int = 0,
+    seed: int = 42,
+) -> np.ndarray:
+    r"""Simulate the Kuramoto model of coupled phase oscillators.
+
+    Each particle has a scalar phase :math:`\theta_i \in \mathbb{R}` (left
+    unwrapped during integration; the user can reduce mod :math:`2\pi` for
+    visualization). The dynamics are
+
+    .. math::
+        \mathrm{d}\theta_i = \omega_i\, \mathrm{d}t
+            + \frac{K}{N}\sum_{j=1}^N \sin(\theta_j - \theta_i)\, \mathrm{d}t
+            + \sigma\, \mathrm{d}W_i
+
+    where :math:`\omega_i` are heterogeneous natural frequencies and
+    :math:`K` is the coupling strength. Synchronization is captured by the
+    Kuramoto order parameter
+
+    .. math::
+        r(t)\, e^{i \psi(t)} = \frac{1}{N}\sum_{j=1}^N e^{i \theta_j(t)},
+
+    with :math:`r \in [0, 1]`. ``r(t)`` is **not** returned by this function;
+    the user computes it from the trajectory, e.g.
+    ``np.abs(np.exp(1j * history[..., 0]).mean(axis=1))``.
+
+    Phase transition. For Gaussian :math:`\omega_i \sim N(0, \sigma_\omega^2)`
+    with density :math:`g(\omega) = (\sigma_\omega \sqrt{2\pi})^{-1}
+    \exp(-\omega^2 / (2 \sigma_\omega^2))`, the classical Kuramoto critical
+    coupling is
+
+    .. math::
+        K_c = \frac{2}{\pi g(0)} = 2\, \sigma_\omega \sqrt{2 / \pi}.
+
+    Below :math:`K_c` the population stays incoherent (:math:`r(\infty) \to 0`
+    as :math:`N \to \infty`); above :math:`K_c` a fraction of oscillators lock
+    and :math:`r(\infty) > 0`.
+
+    The drift is implemented in :math:`O(N)` per step via the order-parameter
+    trick (see the README), not :math:`O(N^2)`.
+
+    Parameters
+    ----------
+    x0 : ndarray, shape (N, 1)
+        Initial phases. One scalar per particle, stored as a column vector.
+    t_final : float
+        Final integration time.
+    n_steps : int
+        Number of Euler-Maruyama steps. ``dt = t_final / n_steps``.
+    coupling_k : float
+        Coupling strength :math:`K`.
+    omegas : ndarray, shape (N,)
+        Natural frequency per particle. Must have length equal to
+        ``x0.shape[0]``.
+    sigma : float
+        Constant scalar diffusion coefficient. Must be non-negative.
+    record_every : int, default 0
+        Record state every ``k`` steps. If 0, only the initial and final
+        states are stored.
+    seed : int, default 42
+        RNG seed. Identical seeds give bit-exact identical trajectories.
+
+    Returns
+    -------
+    history : ndarray, shape (n_recorded, N, 1)
+        Recorded phase trajectories.
+
+    References
+    ----------
+    Kuramoto, Y. (1975). Self-entrainment of a population of coupled
+    non-linear oscillators. International Symposium on Mathematical Problems
+    in Theoretical Physics.
+    """
+    x0 = np.ascontiguousarray(x0, dtype=np.float64)
+    omegas = np.ascontiguousarray(omegas, dtype=np.float64)
+    if x0.ndim != 2:
+        raise ValueError(f"x0 must be 2D, got shape {x0.shape}")
+    if x0.shape[1] != 1:
+        raise ValueError(
+            f"x0 has {x0.shape[1]} columns, expected 1 (scalar phase)"
+        )
+    if omegas.ndim != 1:
+        raise ValueError(f"omegas must be 1D, got shape {omegas.shape}")
+    if omegas.shape[0] != x0.shape[0]:
+        raise ValueError(
+            f"omegas has length {omegas.shape[0]} but x0 has "
+            f"{x0.shape[0]} rows; they must match"
+        )
+    return _core.simulate_kuramoto(
+        x0,
+        float(t_final),
+        int(n_steps),
+        float(coupling_k),
+        omegas,
         float(sigma),
         int(record_every),
         int(seed),
