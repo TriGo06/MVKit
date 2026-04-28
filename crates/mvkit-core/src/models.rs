@@ -4,6 +4,72 @@ use crate::traits::MeanFieldSDE;
 use ndarray::{s, ArrayView2, ArrayViewMut2, Axis};
 use rayon::prelude::*;
 
+/// Linear-quadratic McKean-Vlasov model on the real line.
+///
+/// Each particle has scalar state and dynamics
+/// ```text
+/// dX_i = (a X_i + b * mean(X)) dt + sigma dW_i
+/// ```
+/// where `mean(X) = (1/N) sum_j X_j` is the empirical mean of the population.
+///
+/// If the initial law is Gaussian `X_0 ~ N(m_0, v_0)`, the marginal law stays
+/// Gaussian for all `t`, with mean and variance solving the closed-form ODEs
+/// ```text
+/// dm/dt = (a + b) m,            m(t) = m_0 exp((a + b) t)
+/// dv/dt = 2 a v + sigma^2,      v(t) = v_0 exp(2 a t)
+///                                       + sigma^2 (exp(2 a t) - 1) / (2 a)
+/// ```
+/// (with the obvious `v(t) = v_0 + sigma^2 t` limit when `a = 0`).
+///
+/// The closed-form moments make this model a quantitative benchmark for any
+/// mean-field integrator: empirical moments at time `T` can be compared
+/// directly against `m(T)` and `v(T)`, which gives a clean handle on the weak
+/// order of convergence (Talay and Tubaro, 1990).
+pub struct LinearQuadratic {
+    pub a: f64,
+    pub b: f64,
+    sigma: Vec<f64>,
+}
+
+impl LinearQuadratic {
+    /// Create a linear-quadratic McKean-Vlasov model with parameters
+    /// `a`, `b` and constant scalar diffusion `sigma`.
+    pub fn new(a: f64, b: f64, sigma: f64) -> Self {
+        Self {
+            a,
+            b,
+            sigma: vec![sigma],
+        }
+    }
+}
+
+impl MeanFieldSDE for LinearQuadratic {
+    fn dim(&self) -> usize {
+        1
+    }
+
+    fn sigma(&self) -> &[f64] {
+        &self.sigma
+    }
+
+    fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+        let n = state.nrows();
+        // Empirical mean. Sequential add over a single column is already
+        // vectorized by the compiler and is cheap compared to the parallel
+        // update below.
+        let mean = state.column(0).sum() / n as f64;
+        let a = self.a;
+        let b_mean = self.b * mean;
+
+        out.axis_iter_mut(Axis(0))
+            .into_par_iter()
+            .enumerate()
+            .for_each(|(i, mut out_row)| {
+                out_row[0] = a * state[[i, 0]] + b_mean;
+            });
+    }
+}
+
 /// Cucker-Smale flocking model in `spatial_dim` dimensions.
 ///
 /// Per particle, the state is the concatenation `(x, v)` where both `x` and

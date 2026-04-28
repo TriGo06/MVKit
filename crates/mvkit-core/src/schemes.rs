@@ -98,8 +98,28 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::models::CuckerSmale;
+    use crate::models::{CuckerSmale, LinearQuadratic};
     use approx::assert_abs_diff_eq;
+
+    #[test]
+    fn lq_no_noise_mean_follows_exponential() {
+        // With sigma = 0 the mean ODE dm/dt = (a + b) m is exact, so the
+        // empirical mean of the discretized particle system should match
+        // m_0 exp((a + b) T) up to the Euler-Maruyama bias on the mean ODE,
+        // which is O(dt).
+        let n = 500;
+        let m0 = 1.0;
+        let x0 = ndarray::Array2::<f64>::from_elem((n, 1), m0);
+        let a = -0.7;
+        let b = 1.4;
+        let t_final = 1.0;
+        let model = LinearQuadratic::new(a, b, 0.0);
+        let hist = euler_maruyama(&model, &x0, t_final, 5000, 0, 7);
+        let final_state = hist.index_axis(Axis(0), hist.shape()[0] - 1);
+        let final_mean: f64 = final_state.column(0).sum() / n as f64;
+        let expected = m0 * ((a + b) * t_final).exp();
+        assert_abs_diff_eq!(final_mean, expected, epsilon = 5e-4);
+    }
 
     #[test]
     fn no_noise_conserves_mean_velocity() {
