@@ -42,9 +42,16 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 
     // Original division-and-remainder form, kept verbatim so this crate
     // builds on Rust toolchains older than 1.87 (the stabilization of
-    // is_multiple_of). The clippy::manual_is_multiple_of lint (1.94+)
-    // would otherwise rewrite the modulo into a higher-MSRV form.
-    #[allow(clippy::manual_is_multiple_of)]
+    // is_multiple_of). Two recent clippy lints would otherwise rewrite
+    // this into a higher-MSRV form: manual_is_multiple_of (1.94+) and
+    // manual_checked_ops (1.95+, fires on the if-zero/else-divide
+    // pattern below). We allow both; unknown_lints keeps the 1.95-only
+    // name from breaking older clippy versions.
+    #[allow(
+        unknown_lints,
+        clippy::manual_is_multiple_of,
+        clippy::manual_checked_ops
+    )]
     let n_recorded = if record_every == 0 {
         2
     } else {
