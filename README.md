@@ -131,6 +131,43 @@ A note on Milstein's improvement. Milstein has strong order 1 (vs Euler's strong
 
 References: Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). *A theory of the term structure of interest rates*. Econometrica 53, 385-407. McKean-Vlasov extensions are standard, see Carmona and Delarue (2018).
 
+## Propagation of chaos
+
+For a McKean-Vlasov SDE with i.i.d. initial conditions, Sznitman's classical result (1991) says the empirical measure $\mu_N$ of the $N$-particle system converges in distribution to the McKean-Vlasov limit law $\mu$ as $N \to \infty$. Fournier and Guillin (2015) sharpened this to a quantitative rate: in dimension 1, for laws with finite $(4 + \varepsilon)$-th moment, $\mathbb{E}[W_2(\mu_N, \mu)] = O(N^{-1/2})$, where $W_2$ is the 2-Wasserstein distance.
+
+`mvkit.poc` provides a small utility that takes any 1D mean-field simulator wrapped as `(n_particles, seed) -> 1D array of terminal-time states`, sweeps `N`, computes the exact 1D Wasserstein-2 distance to a reference inverse CDF on each run, and fits the log-log slope of the median against $\log N$. The slope should land near $-1/2$:
+
+```python
+import numpy as np
+from scipy.stats import norm
+
+from mvkit import simulate_linear_quadratic
+from mvkit.poc import estimate_propagation_of_chaos_rate
+
+a, b, sigma, T = -0.5, 1.0, 0.5, 1.0
+m_0, v_0 = 0.0, 1.0
+m_T = m_0 * np.exp((a + b) * T)
+v_T = v_0 * np.exp(2 * a * T) + sigma**2 * (np.exp(2 * a * T) - 1) / (2 * a)
+
+def simulator(n, seed):
+    rng = np.random.default_rng(seed)
+    x0 = rng.normal(m_0, np.sqrt(v_0), size=(n, 1))
+    h = simulate_linear_quadratic(x0, T, 1000, a=a, b=b, sigma=sigma, seed=seed)
+    return h[-1, :, 0]
+
+result = estimate_propagation_of_chaos_rate(
+    simulator=simulator,
+    reference_inv_cdf=norm(loc=m_T, scale=np.sqrt(v_T)).ppf,
+    n_values=[100, 300, 1000, 3000, 10000],
+    n_seeds=16,
+)
+print(result.fitted_slope)  # should be ~ -0.5
+```
+
+See `examples/poc_rate_lq.py` for a runnable two-panel figure showing the log-log fit and the empirical-vs-analytical CDF overlay at the largest $N$.
+
+Scope. Currently 1D only (LinearQuadratic, Kuramoto via the order parameter, MeanFieldCIR). Cucker-Smale state is 4D, which requires sliced or projected Wasserstein and is on the v0.2 roadmap.
+
 ## Benchmarks
 
 Criterion benchmarks track Euler-Maruyama throughput in particle-steps per second. Run them from the workspace root:

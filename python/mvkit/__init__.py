@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import _core
+from . import _core, poc
 
 __version__ = _core.__version__
 __all__ = [
+    "poc",
     "simulate_cucker_smale",
     "simulate_kuramoto",
     "simulate_linear_quadratic",
