@@ -89,7 +89,7 @@ def main() -> None:
         f"Sub-critical K = {k_sub:.2f} ($K_c \\approx$ {k_critical:.2f})"
     )
     axd["sub"].set_xlabel("t")
-    axd["sub"].set_ylabel(r"$\theta_i(t) \bmod 2\pi$")
+    axd["sub"].set_ylabel(r"$\theta_i(t) \, \mathrm{mod} \, 2\pi$")
     axd["sub"].set_ylim(0.0, 2.0 * np.pi)
 
     for i in sample:
@@ -102,7 +102,7 @@ def main() -> None:
         )
     axd["sup"].set_title(f"Super-critical K = {k_super:.2f}")
     axd["sup"].set_xlabel("t")
-    axd["sup"].set_ylabel(r"$\theta_i(t) \bmod 2\pi$")
+    axd["sup"].set_ylabel(r"$\theta_i(t) \, \mathrm{mod} \, 2\pi$")
     axd["sup"].set_ylim(0.0, 2.0 * np.pi)
 
     axd["r"].plot(
