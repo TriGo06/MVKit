@@ -40,12 +40,17 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     assert_eq!(sigma.len(), d, "sigma length must equal dim()");
     let sigma_arr = ndarray::Array1::from(sigma.to_vec());
 
-    let n_recorded = match n_steps.checked_div(record_every) {
-        None => 2,
-        Some(regular) => {
-            let needs_final = !n_steps.is_multiple_of(record_every);
-            1 + regular + usize::from(needs_final)
-        }
+    // Original division-and-remainder form, kept verbatim so this crate
+    // builds on Rust toolchains older than 1.87 (the stabilization of
+    // is_multiple_of). The clippy::manual_is_multiple_of lint (1.94+)
+    // would otherwise rewrite the modulo into a higher-MSRV form.
+    #[allow(clippy::manual_is_multiple_of)]
+    let n_recorded = if record_every == 0 {
+        2
+    } else {
+        let regular = n_steps / record_every;
+        let needs_final = n_steps % record_every != 0;
+        1 + regular + usize::from(needs_final)
     };
 
     let mut history = Array3::<f64>::zeros((n_recorded, n, d));

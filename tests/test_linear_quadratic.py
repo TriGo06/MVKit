@@ -160,6 +160,21 @@ def lq_convergence_data():
     Euler bias on both the empirical mean and the empirical variance sits
     well above the Monte Carlo noise floor. Cached at module scope so the
     mean and variance slope tests share a single sweep.
+
+    Regime justification (do NOT change a, b, sigma, T without redoing this).
+    With a = -2, sigma = 0.5, T = 8, the closed-form variance v(T) is
+    saturated at its stationary value sigma^2 / (-2 a) = 0.0625; the
+    transient is killed by exp(2 a T) = exp(-32) ~= 1e-14. The Euler bias
+    on the variance is sub-dominant in dt: bias_var(h) ~ |a| v(T) h / 2
+    plus a small correction proportional to exp(2 a T). At h = T / 800 =
+    0.01 we get |bias_var| ~ 6e-4. The MC noise floor on the variance
+    estimator over n_seeds = 16 seeds and n_particles = 50000 is
+    v(T) sqrt(2 / (N K)) ~ 1e-4. Ratio bias / mc_noise at the smallest dt
+    is ~ 6, versus ~ 1800 for the mean test (where the bias scales with
+    m(T) = exp(4) ~= 54.6). The pre-flight assert in test_weak_order_variance
+    catches a misconfiguration but with very little margin on the variance
+    side. If you tweak any of a, b, sigma, T, or n_particles, recompute
+    the ratio by hand before trusting the slope.
     """
     a, b, sigma = -2.0, 2.5, 0.5
     t_final = 8.0
