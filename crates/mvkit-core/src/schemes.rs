@@ -40,12 +40,12 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     assert_eq!(sigma.len(), d, "sigma length must equal dim()");
     let sigma_arr = ndarray::Array1::from(sigma.to_vec());
 
-    let n_recorded = if record_every == 0 {
-        2
-    } else {
-        let regular = n_steps / record_every;
-        let needs_final = !n_steps.is_multiple_of(record_every);
-        1 + regular + usize::from(needs_final)
+    let n_recorded = match n_steps.checked_div(record_every) {
+        None => 2,
+        Some(regular) => {
+            let needs_final = !n_steps.is_multiple_of(record_every);
+            1 + regular + usize::from(needs_final)
+        }
     };
 
     let mut history = Array3::<f64>::zeros((n_recorded, n, d));
