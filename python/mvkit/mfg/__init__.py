@@ -22,10 +22,12 @@ from .linear_quadratic import (
     LQMFGSolution,
     lq_mfg_analytical_variance,
     solve_lq_mfg,
+    solve_lq_mfg_fictitious_play,
 )
 
 __all__ = [
     "LQMFGSolution",
     "lq_mfg_analytical_variance",
     "solve_lq_mfg",
+    "solve_lq_mfg_fictitious_play",
 ]

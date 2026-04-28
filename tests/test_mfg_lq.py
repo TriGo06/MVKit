@@ -27,7 +27,12 @@ import math
 import numpy as np
 import pytest
 
-from mvkit.mfg import LQMFGSolution, lq_mfg_analytical_variance, solve_lq_mfg
+from mvkit.mfg import (
+    LQMFGSolution,
+    lq_mfg_analytical_variance,
+    solve_lq_mfg,
+    solve_lq_mfg_fictitious_play,
+)
 from mvkit.mfg._riccati import solve_riccati
 
 
@@ -252,3 +257,139 @@ def test_invalid_inputs():
             q=1.0, q_T=0.0, sigma=0.5, T=1.0, mu_0_mean=0.0, mu_0_var=1.0,
             m_initial=np.zeros(7),  # wrong shape
         )
+
+
+# ---------- Fictitious Play ----------
+
+
+def _standard_fp_kwargs(n_particles: int, n_grid: int = 200, seed: int = 0):
+    return dict(
+        q=2.0,
+        q_T=1.0,
+        sigma=0.3,
+        T=2.0,
+        mu_0_mean=0.0,
+        mu_0_var=0.5,
+        n_particles=n_particles,
+        n_grid=n_grid,
+        tol=1e-4,
+        seed=seed,
+    )
+
+
+def test_fp_and_picard_converge_to_same_equilibrium():
+    """Both methods solve the same fixed-point problem; on LQ they must
+    agree on the equilibrium mean within MC tolerance.
+
+    The variance trajectory is computed analytically from P, so it is
+    bit-exact identical between the two methods modulo float arithmetic
+    in the variance ODE solver, which is why we compare with a small
+    relative tolerance rather than ``assert_array_equal``.
+    """
+    kwargs = _standard_fp_kwargs(n_particles=10000, seed=1)
+    sol_p = solve_lq_mfg(**kwargs, n_iterations_max=20)
+    sol_fp = solve_lq_mfg(
+        **kwargs, n_iterations_max=50, method="fictitious_play"
+    )
+    assert sol_p.converged and sol_fp.converged
+    assert np.max(np.abs(sol_p.m - sol_fp.m)) < 1e-2
+    rel_v = np.max(np.abs(sol_p.V - sol_fp.V) / sol_p.V)
+    assert rel_v < 0.05
+
+
+def test_fp_converges_in_reasonable_iterations():
+    """Slower than Picard's geometric, faster than the worst-case O(1/k)
+    in our regime. Empirically ``<= 10`` iterations for ``tol = 1e-4`` at
+    N=50000 across the seeds we sampled; the assertion uses ``<= 15`` to
+    leave headroom for seed and platform variation.
+    """
+    sol = solve_lq_mfg_fictitious_play(
+        **_standard_fp_kwargs(n_particles=50000, seed=0),
+        n_iterations_max=50,
+    )
+    assert sol.converged
+    assert sol.n_iterations <= 15
+
+
+def test_fp_robust_to_bad_initialization():
+    """Standard Fictitious Play averages the initial bad guess into the
+    historical mean, which slows convergence dramatically when ``m^(0)``
+    is far from the equilibrium. Setting ``damping_burn_in=10`` runs ten
+    Picard steps first to drag ``m^(k)`` close to equilibrium, then the
+    historical average accumulates from a sensible starting point.
+    """
+    n_grid = 200
+    sol = solve_lq_mfg_fictitious_play(
+        q=1.0,
+        q_T=0.5,
+        sigma=0.5,
+        T=1.0,
+        mu_0_mean=0.0,
+        mu_0_var=1.0,
+        n_particles=50000,
+        n_grid=n_grid,
+        tol=1e-4,
+        seed=2,
+        m_initial=np.full(n_grid + 1, 5.0),
+        damping_burn_in=10,
+        n_iterations_max=50,
+    )
+    assert sol.converged
+    assert np.max(np.abs(sol.m)) < 1e-2
+
+
+def test_fp_historical_average_is_non_trivial():
+    """At iteration 5 the historical average bar_m^(5) and the latest
+    iterate m^(5) must differ non-trivially. If they were equal, the
+    Picard fallback path would be active and Fictitious Play would not
+    actually be running.
+    """
+    sol = solve_lq_mfg_fictitious_play(
+        **_standard_fp_kwargs(n_particles=10000, seed=0),
+        n_iterations_max=50,
+    )
+    iterates = sol.m_iterates
+    assert len(iterates) >= 6, "need at least 6 iterates to inspect k=5"
+    bar_m_5 = np.mean(np.stack(iterates[:6]), axis=0)
+    m_5 = iterates[5]
+    assert np.max(np.abs(bar_m_5 - m_5)) > 1e-4
+
+
+def test_default_method_is_picard():
+    """Backward compatibility: omitting ``method=`` must reproduce the
+    Picard solver byte-for-byte.
+    """
+    kwargs = dict(
+        q=1.0,
+        q_T=0.5,
+        sigma=0.5,
+        T=1.0,
+        mu_0_mean=1.0,
+        mu_0_var=0.5,
+        n_particles=2000,
+        n_grid=100,
+        n_iterations_max=10,
+        tol=1e-3,
+        seed=7,
+    )
+    sol_default = solve_lq_mfg(**kwargs)
+    sol_picard = solve_lq_mfg(**kwargs, method="picard")
+    np.testing.assert_array_equal(sol_default.m, sol_picard.m)
+    np.testing.assert_array_equal(
+        sol_default.x_trajectory, sol_picard.x_trajectory
+    )
+    assert sol_default.n_iterations == sol_picard.n_iterations
+    assert sol_default.converged == sol_picard.converged
+
+
+def test_unknown_method_raises_value_error():
+    with pytest.raises(ValueError) as exc_info:
+        solve_lq_mfg(
+            q=1.0, q_T=0.0, sigma=0.5, T=1.0,
+            mu_0_mean=0.0, mu_0_var=1.0,
+            method="newton",
+        )
+    msg = str(exc_info.value)
+    assert "newton" in msg
+    assert "picard" in msg
+    assert "fictitious_play" in msg
