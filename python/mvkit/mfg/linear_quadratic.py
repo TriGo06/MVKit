@@ -432,6 +432,16 @@ def solve_lq_mfg(
     Returns
     -------
     LQMFGSolution
+
+    See Also
+    --------
+    mvkit.mfg.solve_mfg : The generic grid-based solver. Accepts an
+        :class:`mvkit.mfg.MFGProblem` with arbitrary running and
+        terminal cost callables, and is the right tool for non-LQ
+        problems. ``solve_lq_mfg`` is faster and free of spatial
+        discretization error on the value-function structure (it
+        carries the analytical Riccati ODE for ``P(t)``); use it
+        whenever the cost is exactly LQ.
     """
     _validate_common_inputs(
         q, q_T, sigma, T, mu_0_var, n_particles, n_grid, n_iterations_max, tol

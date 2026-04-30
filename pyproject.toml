@@ -26,7 +26,7 @@ dependencies = ["numpy>=1.23"]
 dev = ["pytest>=8", "scipy>=1.11", "matplotlib>=3.7"]
 
 [project.urls]
-Repository = "https://github.com/yourusername/mvkit"
+Repository = "https://github.com/TriGo06/MVKit"
 
 [tool.maturin]
 manifest-path = "crates/mvkit-py/Cargo.toml"

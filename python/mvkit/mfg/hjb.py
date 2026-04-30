@@ -237,6 +237,33 @@ def solve_hjb(
         u_right = np.roll(u_n, -1)
         d_minus = (u_n - u_left) / dx
         d_plus = (u_right - u_n) / dx
+
+        # Explicit-Hamiltonian CFL: dt * max|partial_x u| / dx <= 1 is
+        # the textbook EO stability condition for H(p) = p^2/2.
+        # Implicit diffusion buys some headroom in practice, so a strict
+        # > 1 check produces false positives on otherwise-fine LQ-like
+        # problems whose worst step sits just above 1; we raise above
+        # 2.0, which still catches genuine instabilities (which run
+        # well past 5 within a few steps) while leaving nominal cases
+        # alone.
+        _CFL_HARD_LIMIT = 2.0
+        max_grad = float(max(np.max(np.abs(d_minus)), np.max(np.abs(d_plus))))
+        cfl = max_grad * dt / dx
+        if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
+            step_idx = n_t_int - n + 1
+            recommended_n_t = int(np.ceil(cfl * n_t_int * 1.1))
+            raise ValueError(
+                f"HJB explicit-Hamiltonian CFL violated at step "
+                f"{step_idx}/{n_t_int} (t = {float(t_grid[n]):.4f}): "
+                f"max|partial_x u| ~ {max_grad:.3e}, dt = {dt:.3e}, "
+                f"dx = {dx:.3e}, giving CFL = {cfl:.3e} (hard limit "
+                f"{_CFL_HARD_LIMIT}). "
+                f"Try n_t >= {recommended_n_t}, or widen the spatial "
+                "domain so the value function decays before the periodic "
+                "wrap, or reduce the magnitude of the running cost or "
+                "terminal data."
+            )
+
         h_num = _engquist_osher_quadratic(d_minus, d_plus)
 
         # Source at the start of the backward step.
@@ -250,6 +277,16 @@ def solve_hjb(
 
         rhs = u_n + dt * (-h_num + f_n)
         u[n - 1] = diff_lu.solve(rhs)
+
+        if not np.isfinite(u[n - 1]).all():
+            step_idx = n_t_int - n + 1
+            raise ValueError(
+                f"HJB solver produced non-finite values at step "
+                f"{step_idx}/{n_t_int} (t = {float(t_grid[n - 1]):.4f}). "
+                "This indicates an instability that the per-step CFL "
+                "guard did not catch; please report with a minimal "
+                "reproducer."
+            )
 
     # Optimal drift alpha* = -partial_x u, central difference, periodic.
     drift = np.empty_like(u)

@@ -2,7 +2,7 @@
 
 Fast McKean-Vlasov particle simulation. Rust core, Python API.
 
-[![CI](https://github.com/yourusername/mvkit/actions/workflows/ci.yml/badge.svg)](https://github.com/yourusername/mvkit/actions/workflows/ci.yml)
+[![CI](https://github.com/TriGo06/MVKit/actions/workflows/ci.yml/badge.svg)](https://github.com/TriGo06/MVKit/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
 `mvkit` simulates systems of interacting particles whose dynamics depend on the empirical distribution of the population, i.e. mean-field SDEs of McKean-Vlasov type:
@@ -36,7 +36,7 @@ Roadmap (non-binding) for v0.2 and beyond: tamed schemes, kernel-based interacti
 ## Install (from source)
 
 ```bash
-git clone https://github.com/yourusername/mvkit
+git clone https://github.com/TriGo06/MVKit
 cd mvkit
 pip install maturin
 maturin develop --release
@@ -219,6 +219,15 @@ A Mean Field Game (Lasry and Lions, 2007) is a Cournot-Nash equilibrium for a co
 - `method="fictitious_play"` (also exposed as `solve_lq_mfg_fictitious_play`): $m^{(k+1)} = \mathrm{BR}(\bar m^{(k)})$ where $\bar m^{(k)}$ is the historical average of past iterates. Cardaliaguet and Hadikhanloo (2017) prove $O(1/k)$ convergence under MFG monotonicity, without requiring strict contraction. Slower than Picard on LQ ($\sim$ 30 to 50 iterations) but the natural choice once monotonicity is the only structure available.
 
 A `damping_burn_in` parameter on the FP solver runs leading Picard steps before starting to accumulate the historical average, which speeds up the tail when the initial guess is far from the equilibrium.
+
+### Picking an MFG solver
+
+| Use | Function | Algorithm |
+|---|---|---|
+| Cost is exactly LQ ($\tfrac{1}{2} q (x - \bar m)^2$, scalar) | `mvkit.mfg.solve_lq_mfg` | Particle Picard (or Fictitious Play) on the mean trajectory; analytical Riccati for $P(t)$ |
+| Cost is non-LQ, scalar 1D state | `mvkit.mfg.solve_mfg` | Grid HJB and Fokker-Planck with Picard / FP outer iteration |
+
+The two solvers agree on LQ within first-order discretization error of the grid solver; we use that as a regression check for the grid pipeline. Use `solve_lq_mfg` for benchmarks and quick scalar LQ studies (no spatial discretization error in the value function), and `solve_mfg` whenever the cost is non-LQ.
 
 ```python
 import numpy as np

@@ -287,6 +287,15 @@ def solve_mfg(
     Returns
     -------
     MFGGridSolution
+
+    See Also
+    --------
+    mvkit.mfg.solve_lq_mfg : The closed-form scalar LQ-MFG solver,
+        which carries the analytical Riccati ODE for ``P(t)`` and
+        therefore has no spatial discretization error on the value
+        function. Faster and more accurate when the running and
+        terminal costs are exactly LQ; ``solve_mfg`` is the right
+        choice as soon as the costs are non-LQ.
     """
     _validate_problem(problem)
     if n_t < 1:
@@ -354,30 +363,40 @@ def solve_mfg(
                 f"got {terminal_arr.shape}"
             )
         rc = _make_running_cost_for_hjb(problem, m_input, t_grid)
-        hjb_sol = solve_hjb(
-            sigma=problem.sigma,
-            T=problem.T,
-            x_grid=x_grid,
-            n_t=int(n_t),
-            terminal=terminal_arr,
-            running_cost=rc,
-            boundary=problem.boundary,
-            hamiltonian=problem.hamiltonian,
-        )
+        try:
+            hjb_sol = solve_hjb(
+                sigma=problem.sigma,
+                T=problem.T,
+                x_grid=x_grid,
+                n_t=int(n_t),
+                terminal=terminal_arr,
+                running_cost=rc,
+                boundary=problem.boundary,
+                hamiltonian=problem.hamiltonian,
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"HJB step failed during outer iteration k={k}: {exc}"
+            ) from exc
         last_u = hjb_sol.u
         last_drift = hjb_sol.optimal_drift
 
         # Forward FP under the resulting optimal drift.
         drift_callable = _make_drift_for_fp(last_drift, t_grid)
-        fp_sol = solve_fokker_planck(
-            sigma=problem.sigma,
-            T=problem.T,
-            x_grid=x_grid,
-            n_t=int(n_t),
-            initial=m0,
-            drift=drift_callable,
-            boundary=problem.boundary,
-        )
+        try:
+            fp_sol = solve_fokker_planck(
+                sigma=problem.sigma,
+                T=problem.T,
+                x_grid=x_grid,
+                n_t=int(n_t),
+                initial=m0,
+                drift=drift_callable,
+                boundary=problem.boundary,
+            )
+        except ValueError as exc:
+            raise ValueError(
+                f"Fokker-Planck step failed during outer iteration k={k}: {exc}"
+            ) from exc
         m_next = fp_sol.m
 
         diff = float(np.max(np.abs(m_next - m_curr)))

@@ -214,8 +214,35 @@ def solve_fokker_planck(
                 f"drift must return shape ({n_x},), got {alpha_n.shape}"
             )
 
+        # Explicit-convection CFL: dt * max|drift| / dx <= 1 is the
+        # textbook upwind condition. Implicit diffusion buys headroom
+        # in practice, so we raise on > 2.0 (catastrophic) rather than
+        # strict > 1.0 (which would produce false positives on borderline
+        # cases that work fine).
+        _CFL_HARD_LIMIT = 2.0
+        max_alpha = float(np.max(np.abs(alpha_n)))
+        cfl = max_alpha * dt / dx
+        if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
+            recommended_n_t = int(np.ceil(cfl * n_t_int * 1.1))
+            raise ValueError(
+                f"Fokker-Planck explicit-convection CFL violated at "
+                f"step {n + 1}/{n_t_int} (t = {float(t_grid[n]):.4f}): "
+                f"max|drift| = {max_alpha:.3e}, dt = {dt:.3e}, "
+                f"dx = {dx:.3e}, giving CFL = {cfl:.3e} (hard limit "
+                f"{_CFL_HARD_LIMIT}). Try n_t >= {recommended_n_t}."
+            )
+
         flux_div = _convective_flux_divergence(alpha_n, m_n, dx)
         rhs = m_n - dt * flux_div
         m[n + 1] = diff_lu.solve(rhs)
+
+        if not np.isfinite(m[n + 1]).all():
+            raise ValueError(
+                f"Fokker-Planck solver produced non-finite values at "
+                f"step {n + 1}/{n_t_int} (t = {float(t_grid[n + 1]):.4f}). "
+                "This indicates an instability that the per-step CFL "
+                "guard did not catch; please report with a minimal "
+                "reproducer."
+            )
 
     return FPSolution(t_grid=t_grid, x_grid=x, m=m)
