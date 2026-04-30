@@ -19,6 +19,7 @@ Games with Applications I & II*. Springer.
 from __future__ import annotations
 
 from .fokker_planck import FPSolution, solve_fokker_planck
+from .fokker_planck_2d import FP2DSolution, solve_fokker_planck_2d
 from .grid import MFGGridSolution, MFGProblem, solve_mfg
 from .hjb import HJBSolution, solve_hjb
 from .hjb_2d import HJB2DSolution, solve_hjb_2d
@@ -34,6 +35,7 @@ from .linear_quadratic_vector import (
 )
 
 __all__ = [
+    "FP2DSolution",
     "FPSolution",
     "HJB2DSolution",
     "HJBSolution",
@@ -43,6 +45,7 @@ __all__ = [
     "MFGProblem",
     "lq_mfg_analytical_variance",
     "solve_fokker_planck",
+    "solve_fokker_planck_2d",
     "solve_hjb",
     "solve_hjb_2d",
     "solve_lq_mfg",
