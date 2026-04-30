@@ -38,7 +38,7 @@ cells) are supported.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Tuple
+from typing import Callable, Tuple, Union
 
 import numpy as np
 from scipy.sparse import csc_matrix, eye as sparse_eye, kron as sparse_kron
@@ -46,6 +46,33 @@ from scipy.sparse.linalg import SuperLU, splu
 
 
 _CFL_HARD_LIMIT = 2.0
+
+
+def _normalize_sigma_2d(
+    sigma: Union[float, Tuple[float, float]],
+) -> Tuple[float, float]:
+    """Coerce ``sigma`` to a ``(sigma_x, sigma_y)`` tuple.
+
+    A scalar broadcasts to both axes (isotropic, the v0.1 behavior).
+    A 2-tuple is taken verbatim. Both entries must be strictly
+    positive and finite.
+    """
+    if np.isscalar(sigma):
+        s = float(sigma)
+        sigma_xy = (s, s)
+    else:
+        try:
+            sx, sy = sigma  # type: ignore[misc]
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"sigma must be a positive float or a (sigma_x, sigma_y) "
+                f"tuple, got {sigma!r}"
+            ) from exc
+        sigma_xy = (float(sx), float(sy))
+    for name, val in zip(("sigma_x", "sigma_y"), sigma_xy):
+        if not (np.isfinite(val) and val > 0.0):
+            raise ValueError(f"{name} must be positive and finite, got {val}")
+    return sigma_xy
 
 
 @dataclass
@@ -133,12 +160,17 @@ def _neumann_1d_laplacian(n: int, dx: float) -> csc_matrix:
 
 def _build_implicit_diffusion_2d(
     n_x: int, n_y: int, dx: float, dy: float,
-    sigma: float, dt: float, boundary: str,
+    sigma: Union[float, Tuple[float, float]],
+    dt: float, boundary: str,
 ) -> SuperLU:
-    """Factor ``I - (sigma^2 dt / 2) D^2`` for the 2D Laplacian
-    :math:`D^2 = \\partial_{xx} + \\partial_{yy}` under periodic or
-    Neumann BC. Returned as a ``scipy.sparse.linalg.SuperLU`` object.
+    """Factor ``I - (dt / 2) (sigma_x^2 partial_{xx} + sigma_y^2 partial_{yy})``
+    for the 2D anisotropic-diffusion operator under periodic or Neumann
+    BC. Returned as a ``scipy.sparse.linalg.SuperLU`` object.
+
+    ``sigma`` may be a scalar (isotropic, equivalent to a tuple
+    ``(s, s)``) or a 2-tuple ``(sigma_x, sigma_y)``.
     """
+    sigma_x, sigma_y = _normalize_sigma_2d(sigma)
     if boundary == "periodic":
         Ax = _periodic_1d_laplacian(n_x, dx)
         Ay = _periodic_1d_laplacian(n_y, dy)
@@ -147,9 +179,12 @@ def _build_implicit_diffusion_2d(
         Ay = _neumann_1d_laplacian(n_y, dy)
     Ix = sparse_eye(n_x, format="csc")
     Iy = sparse_eye(n_y, format="csc")
-    L = sparse_kron(Ax, Iy, format="csc") + sparse_kron(Ix, Ay, format="csc")
+    L = (
+        (sigma_x * sigma_x) * sparse_kron(Ax, Iy, format="csc")
+        + (sigma_y * sigma_y) * sparse_kron(Ix, Ay, format="csc")
+    )
     n_total = n_x * n_y
-    M = sparse_eye(n_total, format="csc") - 0.5 * sigma * sigma * dt * L
+    M = sparse_eye(n_total, format="csc") - 0.5 * dt * L
     return splu(M.tocsc())
 
 
@@ -196,7 +231,7 @@ def _engquist_osher_quadratic_2d(
 
 
 def solve_hjb_2d(
-    sigma: float,
+    sigma: Union[float, Tuple[float, float]],
     T: float,
     x_grid: np.ndarray,
     y_grid: np.ndarray,
@@ -210,8 +245,11 @@ def solve_hjb_2d(
 
     Parameters
     ----------
-    sigma : float
-        Isotropic scalar diffusion, strictly positive.
+    sigma : float or (float, float)
+        Diffusion coefficient. A scalar is interpreted as isotropic
+        (``sigma_x = sigma_y = sigma``). A 2-tuple
+        ``(sigma_x, sigma_y)`` allows different diffusion magnitudes
+        per axis. Both entries must be strictly positive.
     T : float
         Time horizon.
     x_grid : ndarray, shape (n_x,)
@@ -236,8 +274,7 @@ def solve_hjb_2d(
     -------
     HJB2DSolution
     """
-    if not (np.isfinite(sigma) and sigma > 0.0):
-        raise ValueError(f"sigma must be positive and finite, got {sigma}")
+    sigma_x, sigma_y = _normalize_sigma_2d(sigma)
     if not (np.isfinite(T) and T > 0.0):
         raise ValueError(f"T must be positive and finite, got {T}")
     if n_t < 1:
@@ -286,7 +323,7 @@ def solve_hjb_2d(
     X, Y = np.meshgrid(x, y, indexing="ij")
 
     diff_lu = _build_implicit_diffusion_2d(
-        n_x, n_y, dx, dy, float(sigma), dt, boundary,
+        n_x, n_y, dx, dy, (sigma_x, sigma_y), dt, boundary,
     )
 
     u = np.empty((n_t_int + 1, n_x, n_y), dtype=np.float64)

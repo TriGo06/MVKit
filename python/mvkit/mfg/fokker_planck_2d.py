@@ -28,12 +28,12 @@ Mass is conserved exactly modulo float arithmetic in both BCs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import Callable, Tuple, Union
 
 import numpy as np
 from scipy.sparse.linalg import SuperLU
 
-from .hjb_2d import _build_implicit_diffusion_2d
+from .hjb_2d import _build_implicit_diffusion_2d, _normalize_sigma_2d
 
 
 _CFL_HARD_LIMIT = 2.0
@@ -123,7 +123,7 @@ def _convective_flux_divergence_2d(
 
 
 def solve_fokker_planck_2d(
-    sigma: float,
+    sigma: Union[float, Tuple[float, float]],
     T: float,
     x_grid: np.ndarray,
     y_grid: np.ndarray,
@@ -136,8 +136,11 @@ def solve_fokker_planck_2d(
 
     Parameters
     ----------
-    sigma : float
-        Isotropic scalar diffusion, strictly positive.
+    sigma : float or (float, float)
+        Diffusion coefficient. Scalar interpreted as isotropic
+        (``sigma_x = sigma_y = sigma``); a 2-tuple
+        ``(sigma_x, sigma_y)`` enables anisotropic diffusion. Both
+        entries must be strictly positive.
     T : float
         Time horizon.
     x_grid, y_grid : ndarray
@@ -160,8 +163,7 @@ def solve_fokker_planck_2d(
     -------
     FP2DSolution
     """
-    if not (np.isfinite(sigma) and sigma > 0.0):
-        raise ValueError(f"sigma must be positive and finite, got {sigma}")
+    sigma_x, sigma_y = _normalize_sigma_2d(sigma)
     if not (np.isfinite(T) and T > 0.0):
         raise ValueError(f"T must be positive and finite, got {T}")
     if n_t < 1:
@@ -202,7 +204,7 @@ def solve_fokker_planck_2d(
     X, Y = np.meshgrid(x, y, indexing="ij")
 
     diff_lu: SuperLU = _build_implicit_diffusion_2d(
-        n_x, n_y, dx, dy, float(sigma), dt, boundary,
+        n_x, n_y, dx, dy, (sigma_x, sigma_y), dt, boundary,
     )
 
     m = np.empty((n_t_int + 1, n_x, n_y), dtype=np.float64)

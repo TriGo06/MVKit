@@ -223,3 +223,67 @@ def test_unsupported_boundary_raises():
             initial=np.zeros((n, n)), drift=_zero_drift,
             boundary="dirichlet",
         )
+
+
+# ---------- Anisotropic sigma ----------
+
+
+def test_scalar_vs_tuple_sigma_byte_identical():
+    """Backward compat: ``sigma=s`` and ``sigma=(s, s)`` must produce
+    byte-identical density trajectories."""
+    n = 24
+    L = 2.0 * np.pi
+    x = _periodic_grid(n, L)
+    y = _periodic_grid(n, L)
+    X, Y = np.meshgrid(x, y, indexing="ij")
+    m0 = (1.0 + 0.4 * np.cos(X) * np.cos(Y)) / (L * L)
+    s1 = solve_fokker_planck_2d(
+        sigma=0.4, T=1.0, x_grid=x, y_grid=y, n_t=20,
+        initial=m0, drift=_zero_drift,
+    )
+    s2 = solve_fokker_planck_2d(
+        sigma=(0.4, 0.4), T=1.0, x_grid=x, y_grid=y, n_t=20,
+        initial=m0, drift=_zero_drift,
+    )
+    np.testing.assert_array_equal(s1.m, s2.m)
+
+
+def test_anisotropic_pure_diffusion_eigenmode():
+    """The cosine-product eigenmode of the weighted Laplacian decays
+    with rate ``(sigma_x^2 k_x^2 + sigma_y^2 k_y^2) / 2``. With
+    ``sigma_x != sigma_y`` and ``k_x = k_y = 1`` on a 2pi-periodic
+    square the decay is ``(sigma_x^2 + sigma_y^2) / 2``."""
+    sigma_x, sigma_y = 0.5, 0.3
+    T = 1.0
+    n = 64
+    L = 2.0 * np.pi
+    x = _periodic_grid(n, L)
+    y = _periodic_grid(n, L)
+    X, Y = np.meshgrid(x, y, indexing="ij")
+    amplitude = 0.5
+
+    def m_at(t, X, Y):
+        decay = np.exp(-0.5 * (sigma_x ** 2 + sigma_y ** 2) * t)
+        return (1.0 + amplitude * decay * np.cos(X) * np.cos(Y)) / (L * L)
+
+    sol = solve_fokker_planck_2d(
+        sigma=(sigma_x, sigma_y), T=T, x_grid=x, y_grid=y, n_t=n,
+        initial=m_at(0.0, X, Y), drift=_zero_drift,
+    )
+    err = float(np.max(np.abs(sol.m[-1] - m_at(T, X, Y))))
+    # Empirical at n=64 is ~ 4e-6; bound 1e-3 is generous.
+    assert err < 1e-3
+    # Mass conservation under anisotropic diffusion.
+    mass = sol.m.sum(axis=(1, 2)) * (L / n) * (L / n)
+    assert np.max(np.abs(mass - 1.0)) < 1e-10
+
+
+def test_invalid_anisotropic_sigma_raises():
+    n = 8
+    x = _periodic_grid(n)
+    y = _periodic_grid(n)
+    with pytest.raises(ValueError, match="sigma"):
+        solve_fokker_planck_2d(
+            sigma=(0.5, 0.0), T=1.0, x_grid=x, y_grid=y, n_t=10,
+            initial=np.zeros((n, n)), drift=_zero_drift,
+        )

@@ -31,13 +31,13 @@ numerical methods*. SIAM Journal on Numerical Analysis 48, 1136-1162.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Tuple, Union
 
 import numpy as np
 
 from .._progress import progress_iter
 from .fokker_planck_2d import solve_fokker_planck_2d
-from .hjb_2d import solve_hjb_2d
+from .hjb_2d import _normalize_sigma_2d, solve_hjb_2d
 
 
 _VALID_METHODS = ("picard", "fictitious_play")
@@ -50,8 +50,11 @@ class MFGProblem2D:
 
     Attributes
     ----------
-    sigma : float
-        Isotropic scalar diffusion, strictly positive.
+    sigma : float or (float, float)
+        Diffusion coefficient. Scalar is interpreted as isotropic
+        (same diffusion in both axes). A 2-tuple
+        ``(sigma_x, sigma_y)`` enables anisotropic diffusion (different
+        magnitudes per axis); both entries must be strictly positive.
     T : float
         Time horizon.
     domain : tuple of ((float, float), (float, float))
@@ -71,7 +74,7 @@ class MFGProblem2D:
         supported in v0.1.
     """
 
-    sigma: float
+    sigma: Union[float, Tuple[float, float]]
     T: float
     domain: Tuple[Tuple[float, float], Tuple[float, float]]
     n_x: Tuple[int, int]
@@ -119,8 +122,8 @@ class MFGGrid2DSolution:
 
 
 def _validate_problem(problem: MFGProblem2D) -> None:
-    if not (np.isfinite(problem.sigma) and problem.sigma > 0.0):
-        raise ValueError(f"sigma must be positive and finite, got {problem.sigma}")
+    # Sigma can be scalar or (sigma_x, sigma_y); shared validator.
+    _normalize_sigma_2d(problem.sigma)
     if not (np.isfinite(problem.T) and problem.T > 0.0):
         raise ValueError(f"T must be positive and finite, got {problem.T}")
     if (

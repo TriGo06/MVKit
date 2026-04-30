@@ -224,6 +224,114 @@ def test_solve_mfg_2d_first_order_convergence_on_lq():
 # ---------- Non-LQ smoke ----------
 
 
+def test_solve_mfg_2d_recovers_anisotropic_lq_covariance():
+    """Anisotropic 2D LQ with ``sigma_x != sigma_y`` recovers the
+    closed-form Lyapunov covariance from ``solve_lq_mfg_vector`` with
+    ``Sigma = diag(sigma_x, sigma_y)``. The test pins down the
+    capability that motivated the anisotropic-sigma extension: the
+    equilibrium covariance is no longer a multiple of the identity,
+    and the diagonal asymmetry is recovered correctly.
+    """
+    q, q_T, T = 1.0, 0.5, 1.0
+    sigma_x, sigma_y = 0.5, 0.3  # asymmetric per axis
+    mu_0_var = np.eye(2)
+    Q_mat = q * np.eye(2)
+    Q_T_mat = q_T * np.eye(2)
+    Sigma_mat = np.diag([sigma_x, sigma_y])
+    R_mat = np.eye(2)
+    t_riccati, P_anal = solve_matrix_riccati(Q_mat, Q_T_mat, R_mat, T, n_grid=200)
+    V_anal = lq_mfg_analytical_covariance(
+        P_anal, t_riccati, Sigma_mat, R_mat, mu_0_var,
+    )
+
+    a, b = -5.0, 5.0
+    n_xy = 64
+    n_t = 50
+    dx = (b - a) / n_xy
+    x_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
+    y_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
+    X_g, Y_g = np.meshgrid(x_v, y_v, indexing="ij")
+
+    def initial_density(X, Y):
+        return np.exp(-0.5 * (X ** 2 + Y ** 2)) / (2.0 * np.pi)
+
+    def F(t, X, Y, m):
+        mx = float(np.sum(X_g * m) * dx * dx)
+        my = float(np.sum(Y_g * m) * dx * dx)
+        return 0.5 * q * ((X - mx) ** 2 + (Y - my) ** 2)
+
+    def g(X, Y, m):
+        mx = float(np.sum(X_g * m) * dx * dx)
+        my = float(np.sum(Y_g * m) * dx * dx)
+        return 0.5 * q_T * ((X - mx) ** 2 + (Y - my) ** 2)
+
+    problem = MFGProblem2D(
+        sigma=(sigma_x, sigma_y), T=T, domain=((a, b), (a, b)),
+        n_x=(n_xy, n_xy),
+        initial_density=initial_density,
+        running_cost=F, terminal_cost=g,
+        boundary="neumann",
+    )
+    sol = solve_mfg_2d(
+        problem, n_t=n_t, method="picard", tol=1e-5,
+        n_iterations_max=20,
+    )
+    assert sol.converged
+
+    V_T_xx = float(np.sum(X_g ** 2 * sol.m[-1]) * dx * dx)
+    V_T_yy = float(np.sum(Y_g ** 2 * sol.m[-1]) * dx * dx)
+    V_T_anal_xx = float(V_anal[-1, 0, 0])
+    V_T_anal_yy = float(V_anal[-1, 1, 1])
+    # Anisotropic V(T): the two diagonals are genuinely different.
+    assert V_T_anal_xx > V_T_anal_yy + 0.05, (
+        "test setup error: pick sigma_x > sigma_y so V_xx > V_yy"
+    )
+    # First-order error at n_xy = 64 is ~ 5e-2 absolute on each diagonal
+    # in our environment; the bound is generous.
+    assert abs(V_T_xx - V_T_anal_xx) < 0.08
+    assert abs(V_T_yy - V_T_anal_yy) < 0.08
+    # Asymmetry direction must be preserved (V_xx > V_yy empirically).
+    assert V_T_xx > V_T_yy
+
+    # Mass conservation under Neumann + anisotropic diffusion.
+    mass = sol.m.sum(axis=(1, 2)) * dx * dx
+    assert np.max(np.abs(mass - 1.0)) < 1e-10
+
+
+def test_anisotropic_sigma_passes_through_to_inner_solvers():
+    """The MFG dispatcher must accept tuple sigma and forward it
+    correctly to both the HJB and FP inner solvers. Sanity: the
+    output is finite and Picard converges."""
+    a, b = -np.pi, np.pi
+    n_xy = 32
+
+    def initial_density(X, Y):
+        return (1.0 + 0.4 * np.cos(X) * np.cos(Y)) / ((b - a) ** 2)
+
+    def F(t, X, Y, m):
+        return 0.5 * (X ** 2 + Y ** 2)
+
+    def g(X, Y, m):
+        return np.zeros_like(X)
+
+    problem = MFGProblem2D(
+        sigma=(0.5, 0.3),
+        T=1.0,
+        domain=((a, b), (a, b)),
+        n_x=(n_xy, n_xy),
+        initial_density=initial_density,
+        running_cost=F,
+        terminal_cost=g,
+        boundary="periodic",
+    )
+    sol = solve_mfg_2d(
+        problem, n_t=40, method="picard", tol=1e-3, n_iterations_max=20,
+    )
+    assert sol.converged
+    assert np.isfinite(sol.m).all()
+    assert np.isfinite(sol.u).all()
+
+
 def test_non_lq_2d_runs_to_convergence():
     """A non-LQ congestion problem in 2D: F = (1/2)((x - x_t)^2 +
     (y - y_t)^2) + lambda * m. Picard converges, mass is conserved,
