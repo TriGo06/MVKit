@@ -18,6 +18,7 @@ Games with Applications I & II*. Springer.
 
 from __future__ import annotations
 
+from .hjb import HJBSolution, solve_hjb
 from .linear_quadratic import (
     LQMFGSolution,
     lq_mfg_analytical_variance,
@@ -26,8 +27,10 @@ from .linear_quadratic import (
 )
 
 __all__ = [
+    "HJBSolution",
     "LQMFGSolution",
     "lq_mfg_analytical_variance",
+    "solve_hjb",
     "solve_lq_mfg",
     "solve_lq_mfg_fictitious_play",
 ]
