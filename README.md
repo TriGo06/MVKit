@@ -26,6 +26,7 @@ Early alpha (v0.1). The current scope:
 - New `mvkit.mfg` sub-module: scalar **linear-quadratic Mean Field Game** solver via Picard iteration, with closed-form Riccati and variance benchmarks
 - **Brownian-increment hook** on every `simulate_*` function (`increments=` keyword) plus `mvkit.brownian` helpers (`generate_increments`, `coarsen`), enabling pathwise (strong) error tests by driving coarse and fine simulations from the same Brownian path. Recovers the textbook strong orders (Euler 1/2, Milstein 1) on multiplicative-noise CIR.
 - Standalone **HJB grid solver** (`mvkit.mfg.solve_hjb`): backward Hamilton-Jacobi-Bellman on a 1D periodic grid with Engquist-Osher upwind for the quadratic Hamiltonian and implicit-explicit time stepping. First step toward a generic non-LQ MFG solver. Validated quantitatively via the Hopf-Cole closed form ($u = -\sigma^2 \log v$ linearizes to backward heat) plus monotonicity and self-convergence tests.
+- Standalone **Fokker-Planck grid solver** (`mvkit.mfg.solve_fokker_planck`): forward FP on the same periodic grid with conservative-form upwind convection and implicit central diffusion. Mass-preserving by construction (errors of order $10^{-13}$ over thousands of steps). Validated against the closed-form translate-and-decay of a Fourier-mode initial under constant drift; convergence rate matches the first-order theoretical prediction.
 - Reproducible seeded RNG (Xoshiro256++)
 - PyO3 bindings, abi3 wheels for Python 3.9+
 
@@ -237,7 +238,7 @@ print(f"V(T) empirical = {V_T_emp:.4f}, analytical = {sol.V[-1]:.4f}")
 
 The closed-form construction follows Carmona and Delarue (2018), *Probabilistic Theory of Mean Field Games with Applications I*, Section 3.5. The Fictitious Play scheme follows Cardaliaguet and Hadikhanloo (2017). See `examples/mfg_lq_demo.py` for a three-panel figure ($P(t)$, analytical-vs-empirical variance, particle trajectories with the equilibrium mean overlaid) and `examples/mfg_lq_picard_vs_fp.py` for a side-by-side log-y convergence trace of both methods.
 
-Roadmap. The HJB grid solver shipped in `mvkit.mfg.solve_hjb` is Phase 1 of the non-LQ MFG plan. Phase 2 will add a forward Fokker-Planck solver on the same grid (mass-preserving, periodic BC); Phase 3 will combine the two via Picard / Fictitious Play iteration into a full `solve_mfg(problem, ...)` entry point and validate against the closed-form LQ-MFG. Beyond that: vector LQ-MFG with matrix Riccati, Neumann BC, and multi-dimensional state.
+Roadmap. Phases 1 and 2 of the non-LQ MFG plan are in: `mvkit.mfg.solve_hjb` (backward HJB) and `mvkit.mfg.solve_fokker_planck` (forward FP). Phase 3 will combine the two via Picard / Fictitious Play iteration into a full `solve_mfg(problem, ...)` entry point and validate against the closed-form LQ-MFG. Beyond that: vector LQ-MFG with matrix Riccati, Neumann BC, and multi-dimensional state.
 
 ## Benchmarks
 
