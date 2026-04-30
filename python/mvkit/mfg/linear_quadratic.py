@@ -50,6 +50,7 @@ from typing import Optional
 import numpy as np
 from scipy.integrate import solve_ivp
 
+from .._progress import progress_iter
 from ._riccati import solve_riccati
 
 
@@ -364,6 +365,7 @@ def solve_lq_mfg(
     m_initial: Optional[np.ndarray] = None,
     method: str = "picard",
     damping_burn_in: int = 0,
+    progress: bool = False,
 ) -> LQMFGSolution:
     r"""Solve the scalar LQ Mean Field Game iteratively.
 
@@ -428,6 +430,11 @@ def solve_lq_mfg(
         average starts accumulating from iteration ``damping_burn_in``;
         earlier iterations behave like Picard. Default 0 is standard
         Fictitious Play.
+    progress : bool, default False
+        If True and ``tqdm`` is installed, wrap the outer iteration in
+        a progress bar; if ``tqdm`` is missing the call still runs and
+        prints one informational line. Default ``False`` is silent and
+        incurs no overhead.
 
     Returns
     -------
@@ -467,7 +474,13 @@ def solve_lq_mfg(
     sum_post_burnin: Optional[np.ndarray] = None
     count_post_burnin = 0
 
-    for k in range(n_iterations_max):
+    iterator = progress_iter(
+        range(n_iterations_max),
+        total=n_iterations_max,
+        description=f"solve_lq_mfg ({method})",
+        enabled=progress,
+    )
+    for k in iterator:
         if method == "picard":
             m_input = m_curr
         else:  # fictitious_play
@@ -547,6 +560,7 @@ def solve_lq_mfg_fictitious_play(
     seed: int = 42,
     m_initial: Optional[np.ndarray] = None,
     damping_burn_in: int = 0,
+    progress: bool = False,
 ) -> LQMFGSolution:
     r"""Solve the scalar LQ Mean Field Game by Fictitious Play.
 
@@ -591,4 +605,5 @@ def solve_lq_mfg_fictitious_play(
         m_initial=m_initial,
         method="fictitious_play",
         damping_burn_in=damping_burn_in,
+        progress=progress,
     )

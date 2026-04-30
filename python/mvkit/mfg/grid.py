@@ -51,6 +51,7 @@ from typing import Callable, List, Optional, Tuple
 
 import numpy as np
 
+from .._progress import progress_iter
 from .fokker_planck import solve_fokker_planck
 from .hjb import solve_hjb
 
@@ -243,6 +244,7 @@ def solve_mfg(
     tol: float = 1e-4,
     damping_burn_in: int = 0,
     m_initial_iterate: Optional[np.ndarray] = None,
+    progress: bool = False,
 ) -> MFGGridSolution:
     r"""Solve a 1D Mean Field Game on a periodic grid by outer iteration.
 
@@ -283,6 +285,11 @@ def solve_mfg(
         Custom initial flow guess for the outer iteration. Defaults to
         the constant-in-time extension of the initial density,
         ``m_initial_iterate[k] = m_0`` for all ``k``.
+    progress : bool, default False
+        If True and ``tqdm`` is installed, wrap the outer iteration in
+        a progress bar; if ``tqdm`` is missing the call still runs and
+        prints one informational line. Default ``False`` is silent and
+        incurs no overhead.
 
     Returns
     -------
@@ -340,7 +347,13 @@ def solve_mfg(
     last_u = None
     last_drift = None
 
-    for k in range(n_iterations_max):
+    iterator = progress_iter(
+        range(n_iterations_max),
+        total=n_iterations_max,
+        description=f"solve_mfg ({method})",
+        enabled=progress,
+    )
+    for k in iterator:
         # Pick the input flow for this iteration's HJB.
         if method == "picard":
             m_input = m_curr

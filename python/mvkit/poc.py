@@ -132,6 +132,7 @@ def estimate_propagation_of_chaos_rate(
     reference_inv_cdf: Callable[[np.ndarray], np.ndarray],
     n_values: Sequence[int],
     n_seeds: int = 10,
+    progress: bool = False,
 ) -> PropagationOfChaosResult:
     """Sweep particle count, compute W2 to a reference law per seed, and
     fit the log-log convergence rate.
@@ -153,11 +154,19 @@ def estimate_propagation_of_chaos_rate(
         Number of independent seeds at each ``N``. The W2 estimator is
         noisy at fixed ``N``; averaging the median across seeds (rather
         than the mean) makes the fit robust to occasional outlier sims.
+    progress : bool, default False
+        If True and ``tqdm`` is installed, wrap the
+        ``len(n_values) * n_seeds`` simulations in a progress bar; if
+        ``tqdm`` is missing the call still runs and prints one
+        informational line. Default ``False`` is silent and incurs
+        no overhead.
 
     Returns
     -------
     result : PropagationOfChaosResult
     """
+    from ._progress import progress_iter
+
     n_array = np.asarray(list(n_values), dtype=np.int64)
     if n_array.ndim != 1 or n_array.size < 2:
         raise ValueError("n_values must be 1D with at least 2 entries")
@@ -168,15 +177,21 @@ def estimate_propagation_of_chaos_rate(
 
     k = n_array.size
     w2 = np.empty((k, n_seeds), dtype=np.float64)
-    for i, n in enumerate(n_array):
-        for s in range(n_seeds):
-            samples = np.asarray(simulator(int(n), s)).ravel()
-            if samples.size != n:
-                raise ValueError(
-                    f"simulator returned {samples.size} samples for "
-                    f"n_particles = {n}"
-                )
-            w2[i, s] = wasserstein2_to_reference(samples, reference_inv_cdf)
+    pairs = [(i, n, s) for i, n in enumerate(n_array) for s in range(n_seeds)]
+    iterator = progress_iter(
+        pairs,
+        total=len(pairs),
+        description=f"poc rate sweep (N x seeds = {k} x {n_seeds})",
+        enabled=progress,
+    )
+    for i, n, s in iterator:
+        samples = np.asarray(simulator(int(n), s)).ravel()
+        if samples.size != n:
+            raise ValueError(
+                f"simulator returned {samples.size} samples for "
+                f"n_particles = {n}"
+            )
+        w2[i, s] = wasserstein2_to_reference(samples, reference_inv_cdf)
 
     median = np.median(w2, axis=1)
     q25 = np.quantile(w2, 0.25, axis=1)
