@@ -21,6 +21,7 @@ from __future__ import annotations
 from .fokker_planck import FPSolution, solve_fokker_planck
 from .fokker_planck_2d import FP2DSolution, solve_fokker_planck_2d
 from .grid import MFGGridSolution, MFGProblem, solve_mfg
+from .grid_2d import MFGGrid2DSolution, MFGProblem2D, solve_mfg_2d
 from .hjb import HJBSolution, solve_hjb
 from .hjb_2d import HJB2DSolution, solve_hjb_2d
 from .linear_quadratic import (
@@ -41,8 +42,10 @@ __all__ = [
     "HJBSolution",
     "LQMFGSolution",
     "LQMFGVectorSolution",
+    "MFGGrid2DSolution",
     "MFGGridSolution",
     "MFGProblem",
+    "MFGProblem2D",
     "lq_mfg_analytical_variance",
     "solve_fokker_planck",
     "solve_fokker_planck_2d",
@@ -52,4 +55,5 @@ __all__ = [
     "solve_lq_mfg_fictitious_play",
     "solve_lq_mfg_vector",
     "solve_mfg",
+    "solve_mfg_2d",
 ]
