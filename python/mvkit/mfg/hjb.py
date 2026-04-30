@@ -124,6 +124,56 @@ def _periodic_implicit_diffusion(
     return splu(A)
 
 
+def _neumann_implicit_diffusion(
+    n_x: int, dx: float, sigma: float, dt: float
+) -> SuperLU:
+    """Build and factorize the implicit-diffusion operator
+    ``I - (sigma^2 dt / 2) D^2`` under homogeneous Neumann BC.
+
+    The discrete Laplacian with reflecting ghost cells
+    (``u_{-1} = u_0``, ``u_{n_x} = u_{n_x - 1}``) has interior rows
+    identical to the periodic case, but the boundary rows are
+    one-sided: row 0 has diagonal ``-1/dx^2`` (instead of ``-2/dx^2``)
+    and a single super-diagonal ``+1/dx^2``; row ``n_x - 1`` is the
+    mirror. This gives a strictly tridiagonal matrix without
+    wrap-around, simpler than the periodic case.
+    """
+    alpha = 0.5 * sigma * sigma * dt / (dx * dx)
+    main = (1.0 + 2.0 * alpha) * np.ones(n_x)
+    main[0] = 1.0 + alpha
+    main[-1] = 1.0 + alpha
+    sub = -alpha * np.ones(n_x - 1)
+    super_ = -alpha * np.ones(n_x - 1)
+    A = diags(
+        diagonals=[main, sub, super_],
+        offsets=[0, -1, 1],
+        format="csc",
+    )
+    return splu(A)
+
+
+def _spatial_diffs(u: np.ndarray, dx: float, boundary: str):
+    """Backward and forward spatial differences with the requested BC.
+
+    Periodic: standard ``np.roll`` shift. Neumann: reflecting ghost
+    cells, which makes the boundary one-sided difference vanish
+    (``D^- u_0 = 0``, ``D^+ u_{n-1} = 0``).
+    """
+    if boundary == "periodic":
+        u_left = np.roll(u, 1)
+        u_right = np.roll(u, -1)
+    else:  # neumann
+        u_left = np.empty_like(u)
+        u_left[0] = u[0]
+        u_left[1:] = u[:-1]
+        u_right = np.empty_like(u)
+        u_right[-1] = u[-1]
+        u_right[:-1] = u[1:]
+    d_minus = (u - u_left) / dx
+    d_plus = (u_right - u) / dx
+    return d_minus, d_plus
+
+
 def solve_hjb(
     sigma: float,
     T: float,
@@ -175,8 +225,13 @@ def solve_hjb(
         (n_x,)``. Returns ``F(x, m_t)`` evaluated on the spatial grid at
         the requested time. The solver evaluates this at the START of
         each backward step, ``t = T, T - dt, ..., dt``.
-    boundary : str, default "periodic"
-        Boundary condition. Only ``"periodic"`` is supported in v0.1.
+    boundary : {"periodic", "neumann"}, default "periodic"
+        Boundary condition. ``"periodic"`` identifies the right
+        endpoint with the left and the grid is read modulo the period.
+        ``"neumann"`` enforces ``partial_x u = 0`` at the boundaries
+        via reflecting ghost cells; the discrete Laplacian becomes
+        strictly tridiagonal (no wrap) and the boundary-cell rows have
+        diagonal ``1 + alpha`` instead of ``1 + 2 alpha``.
     hamiltonian : str, default "quadratic"
         Hamiltonian shape. Only ``"quadratic"`` (i.e. ``H(p) = p^2/2``)
         is supported in v0.1.
@@ -191,9 +246,10 @@ def solve_hjb(
         raise ValueError(f"T must be positive and finite, got {T}")
     if n_t < 1:
         raise ValueError(f"n_t must be >= 1, got {n_t}")
-    if boundary != "periodic":
+    if boundary not in ("periodic", "neumann"):
         raise ValueError(
-            f"boundary={boundary!r} not supported in v0.1; expected 'periodic'"
+            f"boundary={boundary!r} not supported; "
+            "expected 'periodic' or 'neumann'"
         )
     if hamiltonian != "quadratic":
         raise ValueError(
@@ -223,7 +279,10 @@ def solve_hjb(
     dt = float(T) / n_t_int
     t_grid = np.linspace(0.0, float(T), n_t_int + 1)
 
-    diff_lu = _periodic_implicit_diffusion(n_x, dx, float(sigma), dt)
+    if boundary == "periodic":
+        diff_lu = _periodic_implicit_diffusion(n_x, dx, float(sigma), dt)
+    else:
+        diff_lu = _neumann_implicit_diffusion(n_x, dx, float(sigma), dt)
 
     u = np.empty((n_t_int + 1, n_x), dtype=np.float64)
     u[n_t_int] = terminal_arr
@@ -232,11 +291,7 @@ def solve_hjb(
         # Step from t = t_grid[n] (known u[n]) to t = t_grid[n - 1].
         # In tau = T - t, this is one forward step of size dt.
         u_n = u[n]
-        # Periodic spatial differences.
-        u_left = np.roll(u_n, 1)
-        u_right = np.roll(u_n, -1)
-        d_minus = (u_n - u_left) / dx
-        d_plus = (u_right - u_n) / dx
+        d_minus, d_plus = _spatial_diffs(u_n, dx, boundary)
 
         # Explicit-Hamiltonian CFL: dt * max|partial_x u| / dx <= 1 is
         # the textbook EO stability condition for H(p) = p^2/2.
@@ -288,11 +343,17 @@ def solve_hjb(
                 "reproducer."
             )
 
-    # Optimal drift alpha* = -partial_x u, central difference, periodic.
+    # Optimal drift alpha* = -partial_x u, central difference. Under
+    # Neumann the boundary cells use a one-sided gradient consistent
+    # with the reflecting ghost cells (D^- u_0 = 0 = D^+ u_{n-1}).
     drift = np.empty_like(u)
     for k in range(n_t_int + 1):
-        u_left = np.roll(u[k], 1)
-        u_right = np.roll(u[k], -1)
-        drift[k] = -(u_right - u_left) / (2.0 * dx)
+        if boundary == "periodic":
+            u_left = np.roll(u[k], 1)
+            u_right = np.roll(u[k], -1)
+            drift[k] = -(u_right - u_left) / (2.0 * dx)
+        else:  # neumann
+            d_minus, d_plus = _spatial_diffs(u[k], dx, boundary)
+            drift[k] = -(d_minus + d_plus) / 2.0
 
     return HJBSolution(t_grid=t_grid, x_grid=x, u=u, optimal_drift=drift)

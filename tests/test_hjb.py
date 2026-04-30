@@ -273,7 +273,7 @@ def test_unsupported_boundary_raises():
         solve_hjb(sigma=0.5, T=1.0, x_grid=x, n_t=10,
                   terminal=np.zeros(16),
                   running_cost=lambda t, xx: np.zeros_like(xx),
-                  boundary="neumann")
+                  boundary="dirichlet")
 
 
 def test_unsupported_hamiltonian_raises():
@@ -291,3 +291,116 @@ def test_running_cost_wrong_shape_raises():
         solve_hjb(sigma=0.5, T=1.0, x_grid=x, n_t=4,
                   terminal=np.zeros(16),
                   running_cost=lambda t, xx: np.zeros(32))
+
+
+# ---------- Neumann boundary ----------
+
+
+def _cell_centered_grid(a: float, b: float, n_x: int) -> np.ndarray:
+    """Cell-centered grid on ``[a, b]``: x_i = a + (i + 0.5) dx."""
+    dx = (b - a) / n_x
+    return np.linspace(a + dx / 2.0, b - dx / 2.0, n_x)
+
+
+def test_neumann_zero_data_gives_zero_solution():
+    n_x = 64
+    x = _cell_centered_grid(0.0, 2.0, n_x)
+    sol = solve_hjb(
+        sigma=0.4, T=1.0, x_grid=x, n_t=40,
+        terminal=np.zeros(n_x),
+        running_cost=lambda t, xx: np.zeros_like(xx),
+        boundary="neumann",
+    )
+    assert np.max(np.abs(sol.u)) < 1e-12
+    assert np.max(np.abs(sol.optimal_drift)) < 1e-12
+
+
+def test_neumann_hopf_cole_matches_closed_form():
+    """On a Neumann domain ``[0, L]`` the Laplacian's eigenfunctions are
+    ``cos(k pi x / L)``. With Hopf-Cole and a single cosine mode the
+    backward-heat closed form is
+
+    .. math::
+        v(t, x) = 1 + a \\cos(\\pi x / L)
+                  \\exp(-(\\sigma^2/2)(\\pi/L)^2 (T - t)),
+
+    and ``u = -sigma^2 log v``. Empirically the sup error is ~ 2e-6 at
+    n_x = n_t = 64; the bound is generously looser."""
+    L = 2.0
+    sigma = 0.4
+    T = 1.0
+    amplitude = 0.1
+    n_x = 64
+
+    def u_at(t, x):
+        decay = np.exp(-(T - t) * 0.5 * sigma * sigma * (np.pi / L) ** 2)
+        return -sigma * sigma * np.log(
+            1.0 + amplitude * decay * np.cos(np.pi * x / L)
+        )
+
+    x = _cell_centered_grid(0.0, L, n_x)
+    sol = solve_hjb(
+        sigma=sigma, T=T, x_grid=x, n_t=n_x,
+        terminal=u_at(T, x),
+        running_cost=lambda t, xx: np.zeros_like(xx),
+        boundary="neumann",
+    )
+    err = float(np.max(np.abs(sol.u[0] - u_at(0.0, x))))
+    assert err < 1e-4, f"Neumann Hopf-Cole sup error {err:.3e} above 1e-4"
+
+
+def test_neumann_first_order_convergence():
+    """Joint refinement of ``n_x`` and ``n_t`` halves the sup error."""
+    L = 2.0
+    sigma = 0.4
+    T = 1.0
+    amplitude = 0.1
+
+    def u_at(t, x):
+        decay = np.exp(-(T - t) * 0.5 * sigma * sigma * (np.pi / L) ** 2)
+        return -sigma * sigma * np.log(
+            1.0 + amplitude * decay * np.cos(np.pi * x / L)
+        )
+
+    errs, dxs = [], []
+    for n_x in [32, 64, 128, 256]:
+        x = _cell_centered_grid(0.0, L, n_x)
+        sol = solve_hjb(
+            sigma=sigma, T=T, x_grid=x, n_t=n_x,
+            terminal=u_at(T, x),
+            running_cost=lambda t, xx: np.zeros_like(xx),
+            boundary="neumann",
+        )
+        errs.append(float(np.max(np.abs(sol.u[0] - u_at(0.0, x)))))
+        dxs.append(L / n_x)
+
+    slope, _ = np.polyfit(np.log(dxs), np.log(errs), 1)
+    assert slope > 0.6, f"Neumann Hopf-Cole slope {slope:.3f} below 0.6"
+
+
+def test_neumann_handles_asymmetric_data_periodic_raises():
+    """On asymmetric quadratic data the periodic BC creates a
+    discontinuous wrap-around that the EO upwind cannot stabilize: the
+    CFL guard rightly raises. The Neumann solver, by contrast, sees a
+    smooth ``partial_x u = 0`` boundary and integrates without
+    incident. This test pins down the qualitative win of the new BC.
+    """
+    n_x = 64
+    x = _cell_centered_grid(-2.0, 2.0, n_x)
+    terminal = 0.5 * (x - 0.5) ** 2  # asymmetric in x
+
+    sol_neumann = solve_hjb(
+        sigma=0.4, T=1.0, x_grid=x, n_t=n_x,
+        terminal=terminal,
+        running_cost=lambda t, xx: np.zeros_like(xx),
+        boundary="neumann",
+    )
+    assert np.isfinite(sol_neumann.u).all()
+
+    with pytest.raises(ValueError, match="CFL"):
+        solve_hjb(
+            sigma=0.4, T=1.0, x_grid=x, n_t=n_x,
+            terminal=terminal,
+            running_cost=lambda t, xx: np.zeros_like(xx),
+            boundary="periodic",
+        )

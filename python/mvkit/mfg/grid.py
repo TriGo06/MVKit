@@ -156,10 +156,10 @@ def _validate_problem(problem: MFGProblem) -> None:
         raise ValueError(
             f"domain must be (a, b) with a < b finite, got {problem.domain}"
         )
-    if problem.boundary != "periodic":
+    if problem.boundary not in ("periodic", "neumann"):
         raise ValueError(
-            f"boundary={problem.boundary!r} not supported in v0.1; "
-            f"expected 'periodic'"
+            f"boundary={problem.boundary!r} not supported; "
+            f"expected 'periodic' or 'neumann'"
         )
     if problem.hamiltonian != "quadratic":
         raise ValueError(

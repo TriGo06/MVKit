@@ -93,23 +93,69 @@ def _periodic_implicit_diffusion(
     return splu(A)
 
 
-def _convective_flux_divergence(
-    alpha: np.ndarray, m: np.ndarray, dx: float
-) -> np.ndarray:
-    """Conservative-form upwind flux divergence
-    :math:`(J^c_{i+1/2} - J^c_{i-1/2}) / \\Delta x` for periodic BC.
-
-    The half-grid drift is the central average of adjacent grid drifts;
-    the half-grid density is upwinded based on the sign of the half-grid
-    drift. The resulting telescoping sum vanishes under periodic
-    summation, which is what gives exact mass conservation.
+def _neumann_implicit_diffusion(
+    n_x: int, dx: float, sigma: float, dt: float
+) -> SuperLU:
+    """Factor the Neumann tridiagonal operator
+    ``I - (sigma^2 dt / 2) D^2`` with reflecting ghost cells at the
+    endpoints. Boundary rows have diagonal ``1 + alpha`` (instead of
+    ``1 + 2 alpha``); the matrix is strictly tridiagonal without
+    wrap-around.
     """
-    alpha_right = np.roll(alpha, -1)
-    alpha_half = 0.5 * (alpha + alpha_right)
-    m_right = np.roll(m, -1)
-    flux_right = np.where(alpha_half > 0.0, alpha_half * m, alpha_half * m_right)
-    flux_left = np.roll(flux_right, 1)
-    return (flux_right - flux_left) / dx
+    alpha = 0.5 * sigma * sigma * dt / (dx * dx)
+    main = (1.0 + 2.0 * alpha) * np.ones(n_x)
+    main[0] = 1.0 + alpha
+    main[-1] = 1.0 + alpha
+    sub = -alpha * np.ones(n_x - 1)
+    super_ = -alpha * np.ones(n_x - 1)
+    A = diags(
+        diagonals=[main, sub, super_],
+        offsets=[0, -1, 1],
+        format="csc",
+    )
+    return splu(A)
+
+
+def _convective_flux_divergence(
+    alpha: np.ndarray, m: np.ndarray, dx: float, boundary: str
+) -> np.ndarray:
+    r"""Conservative-form upwind flux divergence
+    :math:`(J^c_{i+1/2} - J^c_{i-1/2}) / \Delta x`.
+
+    Computes the interior half-grid fluxes :math:`J^c_{i+1/2}` for
+    :math:`i = 0, \dots, n_x - 2` (length ``n_x - 1``) via the upwind
+    rule, then forms the divergence according to the boundary condition:
+
+    - ``"periodic"``: pad with the circular wrap so the boundary cell
+      sees the flux at the periodic seam.
+    - ``"neumann"``: pad with zeros at both ends, enforcing the no-flux
+      condition :math:`J^c_{-1/2} = J^c_{n_x - 1/2} = 0`.
+
+    Either way, the telescoping sum vanishes when summed over the
+    spatial grid (periodic sum because of the wrap; Neumann sum because
+    the boundary fluxes are zero), so the discrete scheme conserves
+    total mass exactly.
+    """
+    n_x = m.size
+    # Half-grid drift and upwinded density for the n_x - 1 interior
+    # half-grid points i + 1/2, i = 0, ..., n_x - 2.
+    alpha_half = 0.5 * (alpha[:-1] + alpha[1:])
+    flux_interior = np.where(
+        alpha_half > 0.0, alpha_half * m[:-1], alpha_half * m[1:]
+    )
+    # Pad to length n_x + 1: index k carries J^c_{k - 1/2}.
+    flux_padded = np.empty(n_x + 1, dtype=np.float64)
+    flux_padded[1:n_x] = flux_interior
+    if boundary == "periodic":
+        # Wrap: J^c_{-1/2} = J^c_{n_x - 1/2} = alpha_{n_x - 1/2} m_upwind.
+        wrap_alpha = 0.5 * (alpha[-1] + alpha[0])
+        wrap_flux = wrap_alpha * (m[-1] if wrap_alpha > 0.0 else m[0])
+        flux_padded[0] = wrap_flux
+        flux_padded[-1] = wrap_flux
+    else:  # neumann
+        flux_padded[0] = 0.0
+        flux_padded[-1] = 0.0
+    return (flux_padded[1:] - flux_padded[:-1]) / dx
 
 
 def solve_fokker_planck(
@@ -157,8 +203,13 @@ def solve_fokker_planck(
         Signature ``(t: float, x_grid: ndarray) -> ndarray of shape
         (n_x,)``. Evaluated at the START of each forward step,
         ``t = 0, dt, ..., T - dt``.
-    boundary : str, default "periodic"
-        Boundary condition. Only ``"periodic"`` is supported in v0.1.
+    boundary : {"periodic", "neumann"}, default "periodic"
+        Boundary condition. ``"periodic"`` identifies the right
+        endpoint with the left and the grid is read modulo the period.
+        ``"neumann"`` enforces no-flux at both endpoints
+        (:math:`J(t, a) = J(t, b) = 0`); the conservative flux scheme
+        zeros the boundary half-grid fluxes, which preserves total mass
+        exactly under the discrete divergence.
 
     Returns
     -------
@@ -170,9 +221,10 @@ def solve_fokker_planck(
         raise ValueError(f"T must be positive and finite, got {T}")
     if n_t < 1:
         raise ValueError(f"n_t must be >= 1, got {n_t}")
-    if boundary != "periodic":
+    if boundary not in ("periodic", "neumann"):
         raise ValueError(
-            f"boundary={boundary!r} not supported in v0.1; expected 'periodic'"
+            f"boundary={boundary!r} not supported; "
+            "expected 'periodic' or 'neumann'"
         )
 
     x = np.asarray(x_grid, dtype=np.float64)
@@ -198,7 +250,10 @@ def solve_fokker_planck(
     dt = float(T) / n_t_int
     t_grid = np.linspace(0.0, float(T), n_t_int + 1)
 
-    diff_lu = _periodic_implicit_diffusion(n_x, dx, float(sigma), dt)
+    if boundary == "periodic":
+        diff_lu = _periodic_implicit_diffusion(n_x, dx, float(sigma), dt)
+    else:
+        diff_lu = _neumann_implicit_diffusion(n_x, dx, float(sigma), dt)
 
     m = np.empty((n_t_int + 1, n_x), dtype=np.float64)
     m[0] = initial_arr
@@ -232,7 +287,7 @@ def solve_fokker_planck(
                 f"{_CFL_HARD_LIMIT}). Try n_t >= {recommended_n_t}."
             )
 
-        flux_div = _convective_flux_divergence(alpha_n, m_n, dx)
+        flux_div = _convective_flux_divergence(alpha_n, m_n, dx, boundary)
         rhs = m_n - dt * flux_div
         m[n + 1] = diff_lu.solve(rhs)
 

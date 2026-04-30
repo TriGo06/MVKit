@@ -318,6 +318,133 @@ def test_picard_converges_in_few_iterations_on_lq():
 # ---------- Non-LQ smoke ----------
 
 
+def test_solve_mfg_recovers_asymmetric_lq_on_neumann():
+    """The killer test for Neumann BC: ``mu_0_mean != 0`` makes the
+    LQ value function ``u(t, x) = (1/2) P(t) (x - m_0)^2 + R(t)``
+    non-symmetric, which created a wrap-around blowup on the
+    periodic grid (we documented this and worked around it by forcing
+    ``mu_0_mean = 0``). On Neumann, the boundary respects
+    ``partial_x u = 0`` cleanly and the solver should match the
+    closed-form Riccati variance trajectory at first order in
+    ``dx + dt`` even for asymmetric problems.
+    """
+    q, q_T, sigma, T = 1.0, 0.5, 0.5, 1.0
+    mu_0_mean, mu_0_var = 0.5, 1.0  # asymmetric
+
+    a, b = -6.0, 6.0
+    n_x = 256
+    n_t = 100
+    dx = (b - a) / n_x
+    x_full = np.linspace(a + dx / 2.0, b - dx / 2.0, n_x)
+
+    def initial_density(x):
+        return np.exp(-0.5 * (x - mu_0_mean) ** 2 / mu_0_var) / np.sqrt(
+            2.0 * np.pi * mu_0_var
+        )
+
+    def x_mean(m):
+        return float(np.sum(x_full * m) * dx)
+
+    def running_cost(t, x, m):
+        return 0.5 * q * (x - x_mean(m)) ** 2
+
+    def terminal_cost(x, m):
+        return 0.5 * q_T * (x - x_mean(m)) ** 2
+
+    problem = MFGProblem(
+        sigma=sigma, T=T, domain=(a, b), n_x=n_x,
+        initial_density=initial_density,
+        running_cost=running_cost,
+        terminal_cost=terminal_cost,
+        boundary="neumann",
+    )
+    sol = solve_mfg(
+        problem, n_t=n_t, method="picard", tol=1e-6, n_iterations_max=30,
+    )
+    assert sol.converged
+
+    grid_means = np.array([
+        np.sum(sol.x_grid * sol.m[k]) * dx for k in range(n_t + 1)
+    ])
+    grid_vars = np.array([
+        np.sum((sol.x_grid - grid_means[k]) ** 2 * sol.m[k]) * dx
+        for k in range(n_t + 1)
+    ])
+
+    t_riccati, P_anal = solve_riccati(q, q_T, T, n_grid=400)
+    V_anal = lq_mfg_analytical_variance(P_anal, t_riccati, sigma, mu_0_var)
+    V_on_grid = np.interp(sol.t_grid, t_riccati, V_anal)
+
+    # Equilibrium mean is m_0 = 0.5 throughout, recovered at first
+    # order in dx (empirical max error ~ 2.3e-2 at this resolution).
+    assert np.max(np.abs(grid_means - mu_0_mean)) < 5e-2
+
+    # Variance trajectory matches the Riccati ODE within ~ 5 percent
+    # relative at this resolution; empirical ~ 4 percent.
+    rel_err = np.max(np.abs(grid_vars - V_on_grid) / V_on_grid)
+    assert rel_err < 0.07, f"V relative error {rel_err:.3e} above 0.07"
+
+    # Mass conservation under no-flux BC.
+    mass = sol.m.sum(axis=1) * dx
+    assert np.max(np.abs(mass - 1.0)) < 1e-10
+
+
+def test_solve_mfg_neumann_first_order_convergence_on_asymmetric_lq():
+    """Doubling ``n_x`` and ``n_t`` should halve the variance error
+    against the closed-form Riccati. Confirms the Neumann pipeline is
+    first-order accurate on a problem the periodic version cannot
+    handle at all."""
+    q, q_T, sigma, T = 1.0, 0.5, 0.5, 1.0
+    mu_0_mean, mu_0_var = 0.5, 1.0
+    a, b = -6.0, 6.0
+
+    t_riccati, P_anal = solve_riccati(q, q_T, T, n_grid=400)
+    V_anal = lq_mfg_analytical_variance(P_anal, t_riccati, sigma, mu_0_var)
+
+    def initial_density(x):
+        return np.exp(-0.5 * (x - mu_0_mean) ** 2 / mu_0_var) / np.sqrt(
+            2.0 * np.pi * mu_0_var
+        )
+
+    errs, dxs = [], []
+    for n_x, n_t in [(128, 50), (256, 100), (512, 200)]:
+        dx = (b - a) / n_x
+        x_full = np.linspace(a + dx / 2.0, b - dx / 2.0, n_x)
+
+        def x_mean(m, x=x_full, dx=dx):
+            return float(np.sum(x * m) * dx)
+
+        def running_cost(t, x, m):
+            return 0.5 * q * (x - x_mean(m)) ** 2
+
+        def terminal_cost(x, m):
+            return 0.5 * q_T * (x - x_mean(m)) ** 2
+
+        problem = MFGProblem(
+            sigma=sigma, T=T, domain=(a, b), n_x=n_x,
+            initial_density=initial_density,
+            running_cost=running_cost,
+            terminal_cost=terminal_cost,
+            boundary="neumann",
+        )
+        sol = solve_mfg(
+            problem, n_t=n_t, method="picard", tol=1e-6, n_iterations_max=30,
+        )
+        means = np.array([
+            np.sum(sol.x_grid * sol.m[k]) * dx for k in range(n_t + 1)
+        ])
+        vars_ = np.array([
+            np.sum((sol.x_grid - means[k]) ** 2 * sol.m[k]) * dx
+            for k in range(n_t + 1)
+        ])
+        V_on_grid = np.interp(sol.t_grid, t_riccati, V_anal)
+        errs.append(float(np.max(np.abs(vars_ - V_on_grid))))
+        dxs.append(dx)
+
+    slope = float(np.polyfit(np.log(dxs), np.log(errs), 1)[0])
+    assert slope > 0.7, f"Neumann LQ convergence slope {slope:.3f} below 0.7"
+
+
 def test_non_lq_congestion_problem_runs_to_convergence():
     """The solver works on a problem where the LQ machinery does not
     apply: a congestion MFG with running cost

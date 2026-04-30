@@ -267,7 +267,7 @@ def test_unsupported_boundary_raises():
     with pytest.raises(ValueError, match="boundary"):
         solve_fokker_planck(sigma=0.5, T=1.0, x_grid=x, n_t=10,
                             initial=np.zeros(16), drift=_zero_drift,
-                            boundary="neumann")
+                            boundary="dirichlet")
 
 
 def test_drift_wrong_shape_raises():
@@ -276,3 +276,88 @@ def test_drift_wrong_shape_raises():
         solve_fokker_planck(sigma=0.5, T=1.0, x_grid=x, n_t=4,
                             initial=np.zeros(16),
                             drift=lambda t, xx: np.zeros(32))
+
+
+# ---------- Neumann boundary ----------
+
+
+def _cell_centered_grid(a: float, b: float, n_x: int) -> np.ndarray:
+    dx = (b - a) / n_x
+    return np.linspace(a + dx / 2.0, b - dx / 2.0, n_x)
+
+
+def test_neumann_pure_diffusion_matches_cosine_eigenmode():
+    """On a Neumann domain ``[0, L]`` the Laplacian's eigenfunctions
+    are ``cos(k pi x / L)``. With ``alpha = 0`` and a single cosine
+    mode initial, the closed-form decay is
+
+    .. math::
+        m(t, x) = (1 + a \\cos(\\pi x / L)
+                       \\exp(-(\\sigma^2/2)(\\pi/L)^2 t)) / L.
+
+    Empirically the sup error is ~ 7e-5 at ``n_x = n_t = 64``."""
+    L = 2.0
+    sigma = 0.4
+    T = 1.0
+
+    def m_at(t, x):
+        decay = np.exp(-0.5 * sigma * sigma * (np.pi / L) ** 2 * t)
+        return (1.0 + 0.5 * decay * np.cos(np.pi * x / L)) / L
+
+    n_x = 64
+    x = _cell_centered_grid(0.0, L, n_x)
+    sol = solve_fokker_planck(
+        sigma=sigma, T=T, x_grid=x, n_t=n_x,
+        initial=m_at(0.0, x),
+        drift=_zero_drift,
+        boundary="neumann",
+    )
+    err = float(np.max(np.abs(sol.m[-1] - m_at(T, x))))
+    assert err < 1e-3, f"Neumann pure-diffusion sup error {err:.3e} above 1e-3"
+
+
+def test_neumann_first_order_convergence_under_refinement():
+    """Joint refinement of ``n_x`` and ``n_t`` should halve the sup
+    error. Empirical slope ~ 1.1 in our environment."""
+    L = 2.0
+    sigma = 0.4
+    T = 1.0
+
+    def m_at(t, x):
+        decay = np.exp(-0.5 * sigma * sigma * (np.pi / L) ** 2 * t)
+        return (1.0 + 0.5 * decay * np.cos(np.pi * x / L)) / L
+
+    errs, dxs = [], []
+    for n_x in [32, 64, 128, 256]:
+        x = _cell_centered_grid(0.0, L, n_x)
+        sol = solve_fokker_planck(
+            sigma=sigma, T=T, x_grid=x, n_t=n_x,
+            initial=m_at(0.0, x), drift=_zero_drift,
+            boundary="neumann",
+        )
+        errs.append(float(np.max(np.abs(sol.m[-1] - m_at(T, x)))))
+        dxs.append(L / n_x)
+
+    slope, _ = np.polyfit(np.log(dxs), np.log(errs), 1)
+    assert slope > 0.7, f"Neumann FP slope {slope:.3f} below 0.7"
+
+
+def test_neumann_mass_conserved_under_variable_drift():
+    """No-flux BC plus conservative-form discretization must preserve
+    total mass exactly, even under a non-zero, non-trivial drift."""
+    L = 2.0 * np.pi
+    n_x = 128
+    x = _cell_centered_grid(0.0, L, n_x)
+    m0 = (1.0 + 0.5 * np.cos(np.pi * x / L)) / L
+    dx = L / n_x
+
+    def drift(t, xx):
+        return 0.3 * np.sin(np.pi * xx / L) + 0.2 * np.cos(2 * np.pi * xx / L + t)
+
+    sol = solve_fokker_planck(
+        sigma=0.3, T=2.0, x_grid=x, n_t=400,
+        initial=m0, drift=drift, boundary="neumann",
+    )
+    mass = sol.m.sum(axis=1) * dx
+    assert np.max(np.abs(mass - 1.0)) < 1e-10
+    assert sol.m.min() > -1e-10
