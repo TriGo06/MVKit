@@ -9,10 +9,11 @@ from __future__ import annotations
 
 import numpy as np
 
-from . import _core, mfg, poc
+from . import _core, brownian, mfg, poc
 
 __version__ = _core.__version__
 __all__ = [
+    "brownian",
     "mfg",
     "poc",
     "simulate_cucker_smale",
@@ -20,6 +21,27 @@ __all__ = [
     "simulate_linear_quadratic",
     "simulate_mean_field_cir",
 ]
+
+
+def _validate_increments(
+    increments,
+    n_steps: int,
+    n_particles: int,
+    expected_dim: int,
+    name: str,
+):
+    """Shape-check the optional ``increments`` array shared across all
+    ``simulate_*`` wrappers. Returns a contiguous float64 array or None.
+    """
+    if increments is None:
+        return None
+    arr = np.ascontiguousarray(increments, dtype=np.float64)
+    expected = (int(n_steps), int(n_particles), int(expected_dim))
+    if arr.shape != expected:
+        raise ValueError(
+            f"{name}: increments must have shape {expected}, got {arr.shape}"
+        )
+    return arr
 
 
 def simulate_cucker_smale(
@@ -32,6 +54,7 @@ def simulate_cucker_smale(
     record_every: int = 0,
     seed: int = 42,
     scheme: str = "euler",
+    increments: np.ndarray | None = None,
 ) -> np.ndarray:
     r"""Simulate the Cucker-Smale flocking model.
 
@@ -73,6 +96,11 @@ def simulate_cucker_smale(
         (Milstein). On constant-diffusion models like Cucker-Smale,
         Milstein reduces to Euler exactly because the diffusion derivative
         is zero; both schemes produce bit-exact identical trajectories.
+    increments : ndarray, optional
+        Precomputed standard normals of shape ``(n_steps, N, 2 *
+        spatial_dim)``. When supplied, the integrator uses these instead
+        of sampling internally; ``seed`` is then ignored. See
+        :mod:`mvkit.brownian` for helpers.
 
     Returns
     -------
@@ -87,6 +115,13 @@ def simulate_cucker_smale(
             f"x0 has {x0.shape[1]} columns, expected 2*spatial_dim = "
             f"{2 * spatial_dim}"
         )
+    increments = _validate_increments(
+        increments,
+        n_steps=n_steps,
+        n_particles=x0.shape[0],
+        expected_dim=2 * spatial_dim,
+        name="simulate_cucker_smale",
+    )
     return _core.simulate_cucker_smale(
         x0,
         float(t_final),
@@ -97,6 +132,7 @@ def simulate_cucker_smale(
         int(record_every),
         int(seed),
         str(scheme),
+        increments,
     )
 
 
@@ -110,6 +146,7 @@ def simulate_linear_quadratic(
     record_every: int = 0,
     seed: int = 42,
     scheme: str = "euler",
+    increments: np.ndarray | None = None,
 ) -> np.ndarray:
     r"""Simulate the linear-quadratic McKean-Vlasov model.
 
@@ -152,6 +189,11 @@ def simulate_linear_quadratic(
         states are stored.
     seed : int, default 42
         RNG seed. Identical seeds give bit-exact identical trajectories.
+    increments : ndarray, optional
+        Precomputed standard normals of shape ``(n_steps, N, 1)``. When
+        supplied, the integrator uses these instead of sampling
+        internally; ``seed`` is then ignored. See :mod:`mvkit.brownian`
+        for helpers.
 
     Returns
     -------
@@ -170,6 +212,13 @@ def simulate_linear_quadratic(
         raise ValueError(
             f"x0 has {x0.shape[1]} columns, expected 1 (scalar state)"
         )
+    increments = _validate_increments(
+        increments,
+        n_steps=n_steps,
+        n_particles=x0.shape[0],
+        expected_dim=1,
+        name="simulate_linear_quadratic",
+    )
     return _core.simulate_linear_quadratic(
         x0,
         float(t_final),
@@ -180,6 +229,7 @@ def simulate_linear_quadratic(
         int(record_every),
         int(seed),
         str(scheme),
+        increments,
     )
 
 
@@ -193,6 +243,7 @@ def simulate_kuramoto(
     record_every: int = 0,
     seed: int = 42,
     scheme: str = "euler",
+    increments: np.ndarray | None = None,
 ) -> np.ndarray:
     r"""Simulate the Kuramoto model of coupled phase oscillators.
 
@@ -251,6 +302,11 @@ def simulate_kuramoto(
         states are stored.
     seed : int, default 42
         RNG seed. Identical seeds give bit-exact identical trajectories.
+    increments : ndarray, optional
+        Precomputed standard normals of shape ``(n_steps, N, 1)``. When
+        supplied, the integrator uses these instead of sampling
+        internally; ``seed`` is then ignored. See :mod:`mvkit.brownian`
+        for helpers.
 
     Returns
     -------
@@ -278,6 +334,13 @@ def simulate_kuramoto(
             f"omegas has length {omegas.shape[0]} but x0 has "
             f"{x0.shape[0]} rows; they must match"
         )
+    increments = _validate_increments(
+        increments,
+        n_steps=n_steps,
+        n_particles=x0.shape[0],
+        expected_dim=1,
+        name="simulate_kuramoto",
+    )
     return _core.simulate_kuramoto(
         x0,
         float(t_final),
@@ -288,6 +351,7 @@ def simulate_kuramoto(
         int(record_every),
         int(seed),
         str(scheme),
+        increments,
     )
 
 
@@ -302,6 +366,7 @@ def simulate_mean_field_cir(
     record_every: int = 0,
     seed: int = 42,
     scheme: str = "euler",
+    increments: np.ndarray | None = None,
 ) -> np.ndarray:
     r"""Simulate the McKean-Vlasov Cox-Ingersoll-Ross model.
 
@@ -361,6 +426,11 @@ def simulate_mean_field_cir(
         strong-order-1 correction term :math:`0.25 \sigma^2 dt (Z^2 - 1)`,
         which is non-trivial here because the diffusion derivative
         :math:`d/dx (\sigma \sqrt{x}) = 0.5 \sigma / \sqrt{x}` is non-zero.
+    increments : ndarray, optional
+        Precomputed standard normals of shape ``(n_steps, N, 1)``. When
+        supplied, the integrator uses these instead of sampling
+        internally; ``seed`` is then ignored. See :mod:`mvkit.brownian`
+        for helpers.
 
     Returns
     -------
@@ -383,6 +453,13 @@ def simulate_mean_field_cir(
         raise ValueError(
             f"x0 has {x0.shape[1]} columns, expected 1 (scalar state)"
         )
+    increments = _validate_increments(
+        increments,
+        n_steps=n_steps,
+        n_particles=x0.shape[0],
+        expected_dim=1,
+        name="simulate_mean_field_cir",
+    )
     return _core.simulate_mean_field_cir(
         x0,
         float(t_final),
@@ -394,4 +471,5 @@ def simulate_mean_field_cir(
         int(record_every),
         int(seed),
         str(scheme),
+        increments,
     )

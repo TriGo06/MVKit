@@ -1,3 +1,5 @@
+from typing import Optional
+
 import numpy as np
 
 __version__: str
@@ -12,6 +14,7 @@ def simulate_cucker_smale(
     record_every: int = ...,
     seed: int = ...,
     scheme: str = ...,
+    increments: Optional[np.ndarray] = ...,
 ) -> np.ndarray: ...
 def simulate_linear_quadratic(
     x0: np.ndarray,
@@ -23,6 +26,7 @@ def simulate_linear_quadratic(
     record_every: int = ...,
     seed: int = ...,
     scheme: str = ...,
+    increments: Optional[np.ndarray] = ...,
 ) -> np.ndarray: ...
 def simulate_kuramoto(
     x0: np.ndarray,
@@ -34,6 +38,7 @@ def simulate_kuramoto(
     record_every: int = ...,
     seed: int = ...,
     scheme: str = ...,
+    increments: Optional[np.ndarray] = ...,
 ) -> np.ndarray: ...
 def simulate_mean_field_cir(
     x0: np.ndarray,
@@ -46,4 +51,5 @@ def simulate_mean_field_cir(
     record_every: int = ...,
     seed: int = ...,
     scheme: str = ...,
+    increments: Optional[np.ndarray] = ...,
 ) -> np.ndarray: ...

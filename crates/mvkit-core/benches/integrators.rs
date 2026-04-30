@@ -40,7 +40,9 @@ fn bench_linear_quadratic(c: &mut Criterion) {
         let x0 = standard_normal_array(n, 1, 0);
         group.throughput(Throughput::Elements((n as u64) * (n_steps as u64)));
         group.bench_with_input(BenchmarkId::from_parameter(n), &n, |b, _| {
-            b.iter_with_large_drop(|| euler_maruyama(&model, &x0, t_final, n_steps, 0, 0xDEADBEEF));
+            b.iter_with_large_drop(|| {
+                euler_maruyama(&model, &x0, t_final, n_steps, 0, 0xDEADBEEF, None)
+            });
         });
     }
     group.finish();
@@ -59,7 +61,9 @@ fn bench_cucker_smale(c: &mut Criterion) {
             BenchmarkId::from_parameter(id),
             &(n, n_steps),
             |b, &(_, ns)| {
-                b.iter_with_large_drop(|| euler_maruyama(&model, &x0, t_final, ns, 0, 0xDEADBEEF));
+                b.iter_with_large_drop(|| {
+                    euler_maruyama(&model, &x0, t_final, ns, 0, 0xDEADBEEF, None)
+                });
             },
         );
     }

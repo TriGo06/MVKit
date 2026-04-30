@@ -13,12 +13,13 @@ mod functions {
     use mvkit_core::schemes::{euler_maruyama, milstein};
     use mvkit_core::traits::MeanFieldSDE;
     use ndarray::{Array2, Array3};
-    use numpy::{IntoPyArray, PyArray3, PyReadonlyArray1, PyReadonlyArray2};
+    use numpy::{IntoPyArray, PyArray3, PyReadonlyArray1, PyReadonlyArray2, PyReadonlyArray3};
     use pyo3::prelude::*;
 
     /// Run the requested scheme. Returns a clear `PyValueError` on an
     /// unrecognized scheme name. The integration runs without the GIL
     /// held; the caller should already have released it.
+    #[allow(clippy::too_many_arguments)]
     fn run_scheme<M: MeanFieldSDE>(
         scheme: &str,
         model: &M,
@@ -27,6 +28,7 @@ mod functions {
         n_steps: usize,
         record_every: usize,
         seed: u64,
+        increments: Option<&Array3<f64>>,
     ) -> PyResult<Array3<f64>> {
         match scheme {
             "euler" => Ok(euler_maruyama(
@@ -36,12 +38,45 @@ mod functions {
                 n_steps,
                 record_every,
                 seed,
+                increments,
             )),
-            "milstein" => Ok(milstein(model, x0, t_final, n_steps, record_every, seed)),
+            "milstein" => Ok(milstein(
+                model,
+                x0,
+                t_final,
+                n_steps,
+                record_every,
+                seed,
+                increments,
+            )),
             other => Err(pyo3::exceptions::PyValueError::new_err(format!(
                 "unknown scheme '{}', valid choices are 'euler' and 'milstein'",
                 other
             ))),
+        }
+    }
+
+    /// Materialize and shape-check an optional precomputed increments
+    /// array for a model with state dimension `expected_dim`.
+    fn take_increments<'py>(
+        increments: Option<PyReadonlyArray3<'py, f64>>,
+        n_steps: usize,
+        n_particles: usize,
+        expected_dim: usize,
+    ) -> PyResult<Option<Array3<f64>>> {
+        match increments {
+            None => Ok(None),
+            Some(inc) => {
+                let view = inc.as_array();
+                let s = view.shape();
+                if s != [n_steps, n_particles, expected_dim] {
+                    return Err(pyo3::exceptions::PyValueError::new_err(format!(
+                        "increments shape {:?} does not match (n_steps, N, dim) = ({}, {}, {})",
+                        s, n_steps, n_particles, expected_dim
+                    )));
+                }
+                Ok(Some(view.to_owned()))
+            }
         }
     }
 
@@ -59,6 +94,7 @@ mod functions {
         record_every = 0,
         seed = 42,
         scheme = "euler",
+        increments = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_cucker_smale<'py>(
@@ -72,6 +108,7 @@ mod functions {
         record_every: usize,
         seed: u64,
         scheme: &str,
+        increments: Option<PyReadonlyArray3<'py, f64>>,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         let expected_cols = 2 * spatial_dim;
@@ -93,6 +130,8 @@ mod functions {
             ));
         }
 
+        let n_particles = x0_view.nrows();
+        let increments_owned = take_increments(increments, n_steps, n_particles, expected_cols)?;
         let x0_owned: Array2<f64> = x0_view.to_owned();
         let model = CuckerSmale::new(spatial_dim, beta, sigma);
 
@@ -108,6 +147,7 @@ mod functions {
                 n_steps,
                 record_every,
                 seed,
+                increments_owned.as_ref(),
             )
         })?;
 
@@ -128,6 +168,7 @@ mod functions {
         record_every = 0,
         seed = 42,
         scheme = "euler",
+        increments = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_linear_quadratic<'py>(
@@ -141,6 +182,7 @@ mod functions {
         record_every: usize,
         seed: u64,
         scheme: &str,
+        increments: Option<PyReadonlyArray3<'py, f64>>,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         if x0_view.ncols() != 1 {
@@ -170,6 +212,8 @@ mod functions {
             ));
         }
 
+        let n_particles = x0_view.nrows();
+        let increments_owned = take_increments(increments, n_steps, n_particles, 1)?;
         let x0_owned: Array2<f64> = x0_view.to_owned();
         let model = LinearQuadratic::new(a, b, sigma);
 
@@ -182,6 +226,7 @@ mod functions {
                 n_steps,
                 record_every,
                 seed,
+                increments_owned.as_ref(),
             )
         })?;
 
@@ -202,6 +247,7 @@ mod functions {
         record_every = 0,
         seed = 42,
         scheme = "euler",
+        increments = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_kuramoto<'py>(
@@ -215,6 +261,7 @@ mod functions {
         record_every: usize,
         seed: u64,
         scheme: &str,
+        increments: Option<PyReadonlyArray3<'py, f64>>,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         let omegas_view = omegas.as_array();
@@ -252,6 +299,8 @@ mod functions {
             ));
         }
 
+        let n_particles = x0_view.nrows();
+        let increments_owned = take_increments(increments, n_steps, n_particles, 1)?;
         let x0_owned: Array2<f64> = x0_view.to_owned();
         let omegas_owned = omegas_view.to_owned();
         let model = Kuramoto::new(coupling_k, omegas_owned, sigma);
@@ -265,6 +314,7 @@ mod functions {
                 n_steps,
                 record_every,
                 seed,
+                increments_owned.as_ref(),
             )
         })?;
 
@@ -286,6 +336,7 @@ mod functions {
         record_every = 0,
         seed = 42,
         scheme = "euler",
+        increments = None,
     ))]
     #[allow(clippy::too_many_arguments)]
     pub(super) fn simulate_mean_field_cir<'py>(
@@ -300,6 +351,7 @@ mod functions {
         record_every: usize,
         seed: u64,
         scheme: &str,
+        increments: Option<PyReadonlyArray3<'py, f64>>,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
         let x0_view = x0.as_array();
         if x0_view.ncols() != 1 {
@@ -337,6 +389,8 @@ mod functions {
             ));
         }
 
+        let n_particles = x0_view.nrows();
+        let increments_owned = take_increments(increments, n_steps, n_particles, 1)?;
         let x0_owned: Array2<f64> = x0_view.to_owned();
         let model = MeanFieldCIR::new(kappa, theta, b, sigma);
 
@@ -349,6 +403,7 @@ mod functions {
                 n_steps,
                 record_every,
                 seed,
+                increments_owned.as_ref(),
             )
         })?;
 

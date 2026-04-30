@@ -15,7 +15,13 @@ use rand_xoshiro::Xoshiro256PlusPlus;
 /// * `n_steps`      - number of time steps; `dt = T / n_steps`
 /// * `record_every` - record state every `k` steps. If 0, only the initial and
 ///   final states are recorded
-/// * `seed`         - master RNG seed (fully deterministic given this seed)
+/// * `seed`         - master RNG seed (fully deterministic given this seed,
+///   used only when `increments` is `None`)
+/// * `increments`   - optional precomputed standard-normal increments of
+///   shape `(n_steps, N, dim)`. When `Some`, the integrator reads noise
+///   from this array instead of sampling internally; the values are the
+///   raw `Z_n` (not yet scaled by `sqrt(dt)`). Used by strong-error tests
+///   that drive coarse and fine simulations from the same Brownian path.
 ///
 /// # Returns
 /// A 3D array of shape `(n_recorded, N, dim)` containing recorded states.
@@ -26,6 +32,7 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     n_steps: usize,
     record_every: usize,
     seed: u64,
+    increments: Option<&Array3<f64>>,
 ) -> Array3<f64> {
     assert_eq!(x0.ncols(), model.dim(), "state dim mismatch");
     assert!(n_steps > 0, "n_steps must be > 0");
@@ -35,6 +42,14 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     let d = model.dim();
     let dt = t_final / n_steps as f64;
     let sqrt_dt = dt.sqrt();
+
+    if let Some(inc) = increments {
+        assert_eq!(
+            inc.shape(),
+            [n_steps, n, d],
+            "increments shape mismatch: expected (n_steps, N, dim)"
+        );
+    }
 
     // Original division-and-remainder form, kept verbatim so this crate
     // builds on Rust toolchains older than 1.87 (the stabilization of
@@ -68,11 +83,20 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     let mut record_idx = 1usize;
 
     for step in 1..=n_steps {
-        // Sample noise sequentially. For typical N this is cheap (~10^7
-        // samples/s with Ziggurat) and gives strict reproducibility regardless
-        // of the parallel scheduler.
-        for v in noise_buf.iter_mut() {
-            *v = StandardNormal.sample(&mut rng);
+        // Fill the noise buffer either from the precomputed increments
+        // (strong-error tests, shared Brownian path) or by sequential
+        // sampling. Sequential sampling is cheap (~10^7 samples/s with
+        // Ziggurat) and gives strict reproducibility regardless of the
+        // parallel scheduler.
+        match increments {
+            Some(inc) => {
+                noise_buf.assign(&inc.index_axis(Axis(0), step - 1));
+            }
+            None => {
+                for v in noise_buf.iter_mut() {
+                    *v = StandardNormal.sample(&mut rng);
+                }
+            }
         }
 
         // Drift and diffusion are filled by the model. They may be parallel
@@ -126,7 +150,8 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 /// `diffusion_derivative` returns zero, `milstein` and `euler_maruyama`
 /// produce bit-exact identical trajectories.
 ///
-/// Same arguments and return shape as [`euler_maruyama`].
+/// Same arguments and return shape as [`euler_maruyama`], including the
+/// optional precomputed `increments` array.
 pub fn milstein<M: MeanFieldSDE>(
     model: &M,
     x0: &Array2<f64>,
@@ -134,6 +159,7 @@ pub fn milstein<M: MeanFieldSDE>(
     n_steps: usize,
     record_every: usize,
     seed: u64,
+    increments: Option<&Array3<f64>>,
 ) -> Array3<f64> {
     assert_eq!(x0.ncols(), model.dim(), "state dim mismatch");
     assert!(n_steps > 0, "n_steps must be > 0");
@@ -144,6 +170,14 @@ pub fn milstein<M: MeanFieldSDE>(
     let dt = t_final / n_steps as f64;
     let sqrt_dt = dt.sqrt();
     let half_dt = 0.5 * dt;
+
+    if let Some(inc) = increments {
+        assert_eq!(
+            inc.shape(),
+            [n_steps, n, d],
+            "increments shape mismatch: expected (n_steps, N, dim)"
+        );
+    }
 
     #[allow(
         unknown_lints,
@@ -171,8 +205,15 @@ pub fn milstein<M: MeanFieldSDE>(
     let mut record_idx = 1usize;
 
     for step in 1..=n_steps {
-        for v in noise_buf.iter_mut() {
-            *v = StandardNormal.sample(&mut rng);
+        match increments {
+            Some(inc) => {
+                noise_buf.assign(&inc.index_axis(Axis(0), step - 1));
+            }
+            None => {
+                for v in noise_buf.iter_mut() {
+                    *v = StandardNormal.sample(&mut rng);
+                }
+            }
         }
 
         model.drift(state.view(), drift_buf.view_mut());
@@ -232,7 +273,7 @@ mod tests {
             x0[[i, 0]] = 0.05 * (i as f64);
         }
         let t_final = 1.0;
-        let hist = euler_maruyama(&model, &x0, t_final, 1000, 0, 99);
+        let hist = euler_maruyama(&model, &x0, t_final, 1000, 0, 99, None);
         let final_state = hist.index_axis(Axis(0), hist.shape()[0] - 1);
         for i in 0..n {
             let expected = x0[[i, 0]] + omegas[i] * t_final;
@@ -253,7 +294,7 @@ mod tests {
         let b = 1.4;
         let t_final = 1.0;
         let model = LinearQuadratic::new(a, b, 0.0);
-        let hist = euler_maruyama(&model, &x0, t_final, 5000, 0, 7);
+        let hist = euler_maruyama(&model, &x0, t_final, 5000, 0, 7, None);
         let final_state = hist.index_axis(Axis(0), hist.shape()[0] - 1);
         let final_mean: f64 = final_state.column(0).sum() / n as f64;
         let expected = m0 * ((a + b) * t_final).exp();
@@ -275,7 +316,7 @@ mod tests {
         let init_mean_vy: f64 = (0..n).map(|i| x0[[i, 3]]).sum::<f64>() / n as f64;
 
         let model = CuckerSmale::new(d, 0.3, 0.0);
-        let hist = euler_maruyama(&model, &x0, 5.0, 500, 0, 42);
+        let hist = euler_maruyama(&model, &x0, 5.0, 500, 0, 42, None);
         let final_state = hist.index_axis(Axis(0), hist.shape()[0] - 1);
         let final_mean_vx: f64 = (0..n).map(|i| final_state[[i, 2]]).sum::<f64>() / n as f64;
         let final_mean_vy: f64 = (0..n).map(|i| final_state[[i, 3]]).sum::<f64>() / n as f64;
