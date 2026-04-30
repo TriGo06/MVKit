@@ -27,11 +27,16 @@ from .linear_quadratic import (
     solve_lq_mfg,
     solve_lq_mfg_fictitious_play,
 )
+from .linear_quadratic_vector import (
+    LQMFGVectorSolution,
+    solve_lq_mfg_vector,
+)
 
 __all__ = [
     "FPSolution",
     "HJBSolution",
     "LQMFGSolution",
+    "LQMFGVectorSolution",
     "MFGGridSolution",
     "MFGProblem",
     "lq_mfg_analytical_variance",
@@ -39,5 +44,6 @@ __all__ = [
     "solve_hjb",
     "solve_lq_mfg",
     "solve_lq_mfg_fictitious_play",
+    "solve_lq_mfg_vector",
     "solve_mfg",
 ]
