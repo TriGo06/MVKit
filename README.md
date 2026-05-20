@@ -32,7 +32,7 @@ Early alpha (v0.1). The current scope:
 - Reproducible seeded RNG (Xoshiro256++)
 - PyO3 bindings, abi3 wheels for Python 3.9+
 
-Roadmap (non-binding) for v0.2 and beyond: tamed schemes, kernel-based interactions via FFT, vector LQ-MFG with matrix Riccati, generic HJB grid solver for non-LQ MFG.
+Roadmap (non-binding) for v0.2 and beyond: tamed schemes for super-linear drift, kernel-based interactions via FFT, non-quadratic Hamiltonians for the 2D grid solver, $d \ge 3$ grid solvers, and propagation-of-chaos rates beyond 1D via sliced Wasserstein.
 
 ## Install (from source)
 
@@ -249,7 +249,7 @@ print(f"V(T) empirical = {V_T_emp:.4f}, analytical = {sol.V[-1]:.4f}")
 
 The closed-form construction follows Carmona and Delarue (2018), *Probabilistic Theory of Mean Field Games with Applications I*, Section 3.5. The Fictitious Play scheme follows Cardaliaguet and Hadikhanloo (2017). See `examples/mfg_lq_demo.py` for a three-panel figure ($P(t)$, analytical-vs-empirical variance, particle trajectories with the equilibrium mean overlaid) and `examples/mfg_lq_picard_vs_fp.py` for a side-by-side log-y convergence trace of both methods.
 
-Roadmap. The non-LQ MFG pipeline is end-to-end in 1D and 2D, with periodic + Neumann BC, and is validated against closed-form LQ-MFG references in each dimension. Next: non-quadratic Hamiltonians (per-cell 1D nonlinear solve in HJB), $d \ge 3$ grid solvers (memory-bound without a sparser-than-LU factorization or GPU offload), and tamed schemes for super-linear drift in the particle simulators.
+Roadmap. The non-LQ MFG pipeline is end-to-end in 1D and 2D, with periodic + Neumann BC, and is validated against closed-form LQ-MFG references in each dimension. The 1D HJB solver accepts an arbitrary convex Hamiltonian: `solve_hjb` and `MFGProblem` take a `Hamiltonian`, with `power_hamiltonian(q)` covering the `H(p) = |p|^q / q` family. The generalized Engquist-Osher scheme stays explicit, so no per-cell nonlinear solve is needed. Next: non-quadratic Hamiltonians for the 2D grid solver (where the Engquist-Osher form is no longer separable), $d \ge 3$ grid solvers (memory-bound without a sparser-than-LU factorization or GPU offload), and tamed schemes for super-linear drift in the particle simulators.
 
 ## Benchmarks
 
