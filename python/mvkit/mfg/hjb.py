@@ -1,23 +1,26 @@
 """Numerical solver for the backward Hamilton-Jacobi-Bellman equation
-on a 1D periodic grid.
+on a 1D grid.
 
-For a quadratic Hamiltonian :math:`H(p, x, m) = \\tfrac{1}{2} p^2 - F(x, m_t)`
+For a convex Hamiltonian :math:`H(p)` and running cost :math:`F(x, m_t)`
 the agent's HJB equation reads
 
 .. math::
-    \\partial_t u - \\tfrac{1}{2}(\\partial_x u)^2 + F(x, m_t)
+    \\partial_t u - H(\\partial_x u) + F(x, m_t)
     + \\tfrac{1}{2}\\sigma^2 \\partial_{xx} u = 0,
     \\qquad u(T, x) = g(x, m_T).
 
 In :math:`\\tau = T - t` this becomes a well-posed forward equation:
 
 .. math::
-    \\partial_\\tau u = -\\tfrac{1}{2}(\\partial_x u)^2 + F(x, m_t)
+    \\partial_\\tau u = -H(\\partial_x u) + F(x, m_t)
     + \\tfrac{1}{2}\\sigma^2 \\partial_{xx} u.
 
-We discretize on a uniform periodic grid in :math:`x` with the
-Engquist-Osher upwind for the Hamiltonian and central differences for
-diffusion. Time integration is implicit-explicit: explicit on the
+The Hamiltonian defaults to the quadratic :math:`H(p) = p^2/2` and may
+be any convex :class:`Hamiltonian` whose minimum sits at :math:`p = 0`;
+the optimal feedback control is :math:`\\alpha^* = -H'(\\partial_x u)`.
+
+We discretize on a uniform grid in :math:`x` with the Engquist-Osher
+upwind for the Hamiltonian and central differences for diffusion. Time integration is implicit-explicit: explicit on the
 Hamiltonian and source, implicit on the diffusion. The LHS operator
 :math:`(I - \\tfrac{\\sigma^2 \\Delta\\tau}{2} D^2)` is a fixed sparse
 periodic tridiagonal, factored once via ``scipy.sparse.linalg.splu``;
@@ -48,6 +51,8 @@ import numpy as np
 from scipy.sparse import diags
 from scipy.sparse.linalg import SuperLU, splu
 
+from .hamiltonian import Hamiltonian, _as_hamiltonian
+
 
 @dataclass
 class HJBSolution:
@@ -67,8 +72,9 @@ class HJBSolution:
         function at ``t = 0``.
     optimal_drift : ndarray, shape (n_t + 1, n_x)
         Optimal control at the grid points,
-        ``alpha*(t, x) = -partial_x u``, computed by central difference
-        with periodic wrap-around.
+        ``alpha*(t, x) = -H'(partial_x u)``, with ``partial_x u`` from a
+        central difference (one-sided at Neumann boundaries). For the
+        quadratic Hamiltonian this reduces to ``alpha* = -partial_x u``.
     """
 
     t_grid: np.ndarray
@@ -77,23 +83,26 @@ class HJBSolution:
     optimal_drift: np.ndarray
 
 
-def _engquist_osher_quadratic(
-    d_minus: np.ndarray, d_plus: np.ndarray
+def _engquist_osher(
+    d_minus: np.ndarray, d_plus: np.ndarray, ham: Hamiltonian
 ) -> np.ndarray:
-    """Engquist-Osher numerical Hamiltonian for ``H(p) = (1/2) p^2``.
+    """Engquist-Osher numerical Hamiltonian for a convex ``H`` whose
+    minimum sits at ``p = 0`` with ``H(0) = 0``.
 
-    For convex ``H(p)`` the EO scheme is
+    For convex ``H`` the EO scheme is
 
     .. math::
         H_h(p^-, p^+) = H_+(p^-) + H_-(p^+),
 
     with ``H_+(p) = int_0^p max(H'(q), 0) dq`` and ``H_-`` the analogous
-    minimum integral. For ``H(p) = p^2/2`` this reduces to
-    ``(1/2) max(p^-, 0)^2 + (1/2) min(p^+, 0)^2``, the form we use here.
+    minimum integral. When ``H`` is minimized at ``p = 0``, ``H'`` is
+    non-negative on ``q > 0`` and non-positive on ``q < 0``, so each
+    one-sided integral runs over a single monotone branch and the scheme
+    collapses to ``H(max(p^-, 0)) + H(min(p^+, 0))``. For the quadratic
+    ``H(p) = p^2/2`` this recovers
+    ``(1/2) max(p^-, 0)^2 + (1/2) min(p^+, 0)^2``.
     """
-    return 0.5 * (
-        np.maximum(d_minus, 0.0) ** 2 + np.minimum(d_plus, 0.0) ** 2
-    )
+    return ham.H(np.maximum(d_minus, 0.0)) + ham.H(np.minimum(d_plus, 0.0))
 
 
 def _periodic_implicit_diffusion(
@@ -182,14 +191,14 @@ def solve_hjb(
     terminal: np.ndarray,
     running_cost: Callable[[float, np.ndarray], np.ndarray],
     boundary: str = "periodic",
-    hamiltonian: str = "quadratic",
+    hamiltonian: str | Hamiltonian = "quadratic",
 ) -> HJBSolution:
     r"""Solve the backward HJB on a 1D periodic grid (Phase 1 entry).
 
     The HJB equation
 
     .. math::
-        \partial_t u - \tfrac{1}{2}(\partial_x u)^2 + F(x, m_t)
+        \partial_t u - H(\partial_x u) + F(x, m_t)
         + \tfrac{1}{2}\sigma^2 \partial_{xx} u = 0,
         \qquad u(T, x) = g(x),
 
@@ -232,9 +241,12 @@ def solve_hjb(
         via reflecting ghost cells; the discrete Laplacian becomes
         strictly tridiagonal (no wrap) and the boundary-cell rows have
         diagonal ``1 + alpha`` instead of ``1 + 2 alpha``.
-    hamiltonian : str, default "quadratic"
-        Hamiltonian shape. Only ``"quadratic"`` (i.e. ``H(p) = p^2/2``)
-        is supported in v0.1.
+    hamiltonian : str or Hamiltonian, default "quadratic"
+        The convex Hamiltonian :math:`H(p)`. The string ``"quadratic"``
+        selects :math:`H(p) = p^2/2`; otherwise pass a
+        :class:`~mvkit.mfg.Hamiltonian`, for instance the output of
+        :func:`~mvkit.mfg.power_hamiltonian`. ``H`` must be convex with
+        its minimum at :math:`p = 0`, which is spot-checked on entry.
 
     Returns
     -------
@@ -251,10 +263,7 @@ def solve_hjb(
             f"boundary={boundary!r} not supported; "
             "expected 'periodic' or 'neumann'"
         )
-    if hamiltonian != "quadratic":
-        raise ValueError(
-            f"hamiltonian={hamiltonian!r} not supported in v0.1; expected 'quadratic'"
-        )
+    ham = _as_hamiltonian(hamiltonian)
 
     x = np.asarray(x_grid, dtype=np.float64)
     if x.ndim != 1 or x.size < 4:
@@ -293,8 +302,9 @@ def solve_hjb(
         u_n = u[n]
         d_minus, d_plus = _spatial_diffs(u_n, dx, boundary)
 
-        # Explicit-Hamiltonian CFL: dt * max|partial_x u| / dx <= 1 is
-        # the textbook EO stability condition for H(p) = p^2/2.
+        # Explicit-Hamiltonian CFL: dt * max|H'(partial_x u)| / dx <= 1
+        # is the EO stability condition, with H'(p) the characteristic
+        # speed (for H(p) = p^2/2 it is just max|partial_x u|).
         # Implicit diffusion buys some headroom in practice, so a strict
         # > 1 check produces false positives on otherwise-fine LQ-like
         # problems whose worst step sits just above 1; we raise above
@@ -302,15 +312,24 @@ def solve_hjb(
         # well past 5 within a few steps) while leaving nominal cases
         # alone.
         _CFL_HARD_LIMIT = 2.0
-        max_grad = float(max(np.max(np.abs(d_minus)), np.max(np.abs(d_plus))))
-        cfl = max_grad * dt / dx
+        max_speed = float(
+            max(
+                np.max(np.abs(ham.dH(d_minus))),
+                np.max(np.abs(ham.dH(d_plus))),
+            )
+        )
+        cfl = max_speed * dt / dx
         if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
             step_idx = n_t_int - n + 1
-            recommended_n_t = int(np.ceil(cfl * n_t_int * 1.1))
+            recommended_n_t = (
+                int(np.ceil(cfl * n_t_int * 1.1))
+                if np.isfinite(cfl)
+                else 2 * n_t_int
+            )
             raise ValueError(
                 f"HJB explicit-Hamiltonian CFL violated at step "
                 f"{step_idx}/{n_t_int} (t = {float(t_grid[n]):.4f}): "
-                f"max|partial_x u| ~ {max_grad:.3e}, dt = {dt:.3e}, "
+                f"max|H'(partial_x u)| ~ {max_speed:.3e}, dt = {dt:.3e}, "
                 f"dx = {dx:.3e}, giving CFL = {cfl:.3e} (hard limit "
                 f"{_CFL_HARD_LIMIT}). "
                 f"Try n_t >= {recommended_n_t}, or widen the spatial "
@@ -319,7 +338,7 @@ def solve_hjb(
                 "terminal data."
             )
 
-        h_num = _engquist_osher_quadratic(d_minus, d_plus)
+        h_num = _engquist_osher(d_minus, d_plus, ham)
 
         # Source at the start of the backward step.
         f_n = np.asarray(
@@ -343,17 +362,20 @@ def solve_hjb(
                 "reproducer."
             )
 
-    # Optimal drift alpha* = -partial_x u, central difference. Under
-    # Neumann the boundary cells use a one-sided gradient consistent
-    # with the reflecting ghost cells (D^- u_0 = 0 = D^+ u_{n-1}).
+    # Optimal drift alpha* = -H'(partial_x u), with partial_x u from a
+    # central difference. Under Neumann the boundary cells use a
+    # one-sided gradient consistent with the reflecting ghost cells
+    # (D^- u_0 = 0 = D^+ u_{n-1}). For the quadratic H this is the
+    # familiar alpha* = -partial_x u.
     drift = np.empty_like(u)
     for k in range(n_t_int + 1):
         if boundary == "periodic":
             u_left = np.roll(u[k], 1)
             u_right = np.roll(u[k], -1)
-            drift[k] = -(u_right - u_left) / (2.0 * dx)
+            p_central = (u_right - u_left) / (2.0 * dx)
         else:  # neumann
             d_minus, d_plus = _spatial_diffs(u[k], dx, boundary)
-            drift[k] = -(d_minus + d_plus) / 2.0
+            p_central = (d_minus + d_plus) / 2.0
+        drift[k] = -ham.dH(p_central)
 
     return HJBSolution(t_grid=t_grid, x_grid=x, u=u, optimal_drift=drift)

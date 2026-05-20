@@ -22,6 +22,7 @@ from .fokker_planck import FPSolution, solve_fokker_planck
 from .fokker_planck_2d import FP2DSolution, solve_fokker_planck_2d
 from .grid import MFGGridSolution, MFGProblem, solve_mfg
 from .grid_2d import MFGGrid2DSolution, MFGProblem2D, solve_mfg_2d
+from .hamiltonian import Hamiltonian, power_hamiltonian, quadratic_hamiltonian
 from .hjb import HJBSolution, solve_hjb
 from .hjb_2d import HJB2DSolution, solve_hjb_2d
 from .linear_quadratic import (
@@ -40,6 +41,7 @@ __all__ = [
     "FPSolution",
     "HJB2DSolution",
     "HJBSolution",
+    "Hamiltonian",
     "LQMFGSolution",
     "LQMFGVectorSolution",
     "MFGGrid2DSolution",
@@ -47,6 +49,8 @@ __all__ = [
     "MFGProblem",
     "MFGProblem2D",
     "lq_mfg_analytical_variance",
+    "power_hamiltonian",
+    "quadratic_hamiltonian",
     "solve_fokker_planck",
     "solve_fokker_planck_2d",
     "solve_hjb",

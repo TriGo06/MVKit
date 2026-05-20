@@ -19,7 +19,10 @@ Two tiers:
 Plus a non-LQ smoke test: the solver runs to convergence on a
 congestion problem with ``F(x, m) = (1/2) q (x - x_target)^2 + lambda *
 m`` and produces a non-negative density of unit mass, demonstrating
-the LQ machinery is no longer required.
+the LQ machinery is no longer required. A variant runs a confining
+congestion problem with the non-quadratic ``power_hamiltonian(3)`` to
+confirm the convex-Hamiltonian path threads through the coupled
+HJB / Fokker-Planck iteration.
 
 References
 ----------
@@ -36,7 +39,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from mvkit.mfg import MFGGridSolution, MFGProblem, solve_mfg
+from mvkit.mfg import MFGGridSolution, MFGProblem, power_hamiltonian, solve_mfg
 from mvkit.mfg._riccati import solve_riccati
 from mvkit.mfg.linear_quadratic import lq_mfg_analytical_variance
 
@@ -489,3 +492,77 @@ def test_non_lq_congestion_problem_runs_to_convergence():
     mass = sol.m.sum(axis=1) * dx
     assert np.max(np.abs(mass - 1.0)) < 1e-10
     assert sol.m.min() > -1e-10
+
+
+def test_non_lq_congestion_with_power_hamiltonian():
+    """The non-quadratic Hamiltonian threads through the coupled HJB /
+    Fokker-Planck iteration. A confining congestion MFG (running cost
+    ``(1 - cos x) + lambda m``), solved with ``power_hamiltonian(3)``,
+    converges to a non-negative unit-mass density that is distinct from
+    the quadratic-Hamiltonian equilibrium."""
+    a, b = -np.pi, np.pi
+    n_x = 128
+    L = b - a
+    sigma = 0.4
+    T = 1.0
+    lam = 0.3
+
+    def initial_density(x):
+        return (1.0 + 0.4 * np.cos(x)) / L
+
+    def running_cost(t, x, m):
+        return (1.0 - np.cos(x)) + lam * m
+
+    def terminal_cost(x, m):
+        return np.zeros_like(x)
+
+    def build(ham):
+        return MFGProblem(
+            sigma=sigma, T=T, domain=(a, b), n_x=n_x,
+            initial_density=initial_density,
+            running_cost=running_cost,
+            terminal_cost=terminal_cost,
+            hamiltonian=ham,
+        )
+
+    sol_pow = solve_mfg(
+        build(power_hamiltonian(3.0)), n_t=120, method="picard",
+        tol=1e-5, n_iterations_max=60,
+    )
+    assert sol_pow.converged, (
+        "power-Hamiltonian congestion MFG did not converge in 60 "
+        "Picard iterations"
+    )
+    dx = L / n_x
+    assert np.max(np.abs(sol_pow.m.sum(axis=1) * dx - 1.0)) < 1e-10
+    assert sol_pow.m.min() > -1e-10
+    assert np.isfinite(sol_pow.u).all()
+
+    sol_quad = solve_mfg(
+        build("quadratic"), n_t=120, method="picard",
+        tol=1e-5, n_iterations_max=60,
+    )
+    contrast = float(np.max(np.abs(sol_pow.m - sol_quad.m)))
+    assert contrast > 1e-3, (
+        f"power(3) and quadratic give near-identical equilibria "
+        f"(sup diff {contrast:.3e}); the Hamiltonian is not reaching "
+        "the coupled solver"
+    )
+
+
+def test_invalid_hamiltonian_in_problem_raises():
+    """An unknown ``hamiltonian`` on the problem is rejected up front by
+    the solver's validation, before any iteration runs."""
+    base = _build_lq_problem(
+        q=1.0, q_T=0.5, sigma=0.5, T=1.0,
+        mu_0_mean=0.0, mu_0_var=1.0, n_x=32,
+    )
+    bad = MFGProblem(
+        sigma=base.sigma, T=base.T, domain=base.domain, n_x=base.n_x,
+        initial_density=base.initial_density,
+        running_cost=base.running_cost,
+        terminal_cost=base.terminal_cost,
+        hamiltonian="cubic",
+    )
+    with pytest.raises(ValueError, match="hamiltonian"):
+        solve_mfg(bad, n_t=10)

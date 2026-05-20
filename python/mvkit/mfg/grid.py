@@ -53,6 +53,7 @@ import numpy as np
 
 from .._progress import progress_iter
 from .fokker_planck import solve_fokker_planck
+from .hamiltonian import Hamiltonian, _as_hamiltonian
 from .hjb import solve_hjb
 
 
@@ -87,9 +88,12 @@ class MFGProblem:
         Signature ``(x_grid: ndarray, m_grid: ndarray) -> ndarray of
         shape (n_x,)`` giving :math:`g(x, m_T)` at the grid points. The
         second argument is the terminal-time density on the grid.
-    hamiltonian : str, default "quadratic"
-        Hamiltonian shape. Currently only ``"quadratic"``
-        (:math:`H(p) = p^2/2 - F`) is supported.
+    hamiltonian : str or Hamiltonian, default "quadratic"
+        The convex Hamiltonian :math:`H(p)`, passed through to
+        :func:`mvkit.mfg.solve_hjb`. The string ``"quadratic"`` selects
+        :math:`H(p) = p^2/2`; otherwise pass a
+        :class:`~mvkit.mfg.Hamiltonian` (see
+        :func:`~mvkit.mfg.power_hamiltonian`).
     boundary : str, default "periodic"
         Boundary condition. Currently only ``"periodic"`` is supported.
     """
@@ -101,7 +105,7 @@ class MFGProblem:
     initial_density: Callable[[np.ndarray], np.ndarray]
     running_cost: Callable[[float, np.ndarray, np.ndarray], np.ndarray]
     terminal_cost: Callable[[np.ndarray, np.ndarray], np.ndarray]
-    hamiltonian: str = "quadratic"
+    hamiltonian: str | Hamiltonian = "quadratic"
     boundary: str = "periodic"
 
 
@@ -161,11 +165,7 @@ def _validate_problem(problem: MFGProblem) -> None:
             f"boundary={problem.boundary!r} not supported; "
             f"expected 'periodic' or 'neumann'"
         )
-    if problem.hamiltonian != "quadratic":
-        raise ValueError(
-            f"hamiltonian={problem.hamiltonian!r} not supported in v0.1; "
-            f"expected 'quadratic'"
-        )
+    _as_hamiltonian(problem.hamiltonian)
 
 
 def _build_grid(problem: MFGProblem) -> Tuple[np.ndarray, float, float]:
