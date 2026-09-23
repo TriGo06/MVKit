@@ -20,7 +20,7 @@ Discretization:
   row sums zero) and on a Neumann grid (the modified boundary rows
   also have zero row sums).
 - **CFL on convection**: :math:`\\Delta t (\\max|\\alpha_x| / \\Delta x
-  + \\max|\\alpha_y| / \\Delta y) \\le 1`. Hard limit 2.0 (mirrors 1D).
+  + \\max|\\alpha_y| / \\Delta y) \\le 1`. Hard limit 1.0 (mirrors 1D).
 
 Mass is conserved exactly modulo float arithmetic in both BCs.
 """
@@ -36,7 +36,7 @@ from scipy.sparse.linalg import SuperLU
 from .hjb_2d import _build_implicit_diffusion_2d, _normalize_sigma_2d
 
 
-_CFL_HARD_LIMIT = 2.0
+_CFL_HARD_LIMIT = 1.0
 
 
 @dataclass
@@ -198,6 +198,9 @@ def solve_fokker_planck_2d(
             f"initial must have shape ({n_x}, {n_y}), got {initial_arr.shape}"
         )
 
+    if not np.isfinite(initial_arr).all() or (initial_arr < 0).any():
+        raise ValueError("initial must be finite and non-negative")
+
     n_t_int = int(n_t)
     dt = float(T) / n_t_int
     t_grid = np.linspace(0.0, float(T), n_t_int + 1)
@@ -227,7 +230,10 @@ def solve_fokker_planck_2d(
         max_alpha_y = float(np.max(np.abs(alpha_y)))
         cfl = max_alpha_x * dt / dx + max_alpha_y * dt / dy
         if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
-            recommended_n_t = int(np.ceil(cfl * n_t_int * 1.1))
+            recommended_n_t = (
+                int(np.ceil(cfl * n_t_int * 1.1)) if np.isfinite(cfl)
+                else 2 * n_t_int
+            )
             raise ValueError(
                 f"FP 2D explicit-convection CFL violated at step "
                 f"{n + 1}/{n_t_int} (t = {float(t_grid[n]):.4f}): "

@@ -30,11 +30,22 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 
-def _check_square_psd(M: np.ndarray, name: str) -> None:
-    if M.ndim != 2 or M.shape[0] != M.shape[1]:
+def _check_square_psd(
+    M: np.ndarray, name: str, *, positive_definite: bool = False
+) -> None:
+    if M.ndim != 2 or M.shape[0] != M.shape[1] or M.shape[0] == 0:
         raise ValueError(f"{name} must be a square matrix, got shape {M.shape}")
+    if not np.isfinite(M).all():
+        raise ValueError(f"{name} must contain only finite values")
     if not np.allclose(M, M.T, rtol=1e-10, atol=1e-12):
         raise ValueError(f"{name} must be symmetric (within tolerance)")
+    eigenvalues = np.linalg.eigvalsh(0.5 * (M + M.T))
+    tolerance = 1e-12 * max(1.0, float(np.max(np.abs(eigenvalues))))
+    if positive_definite:
+        if eigenvalues[0] <= 0.0:
+            raise ValueError(f"{name} must be positive definite")
+    elif eigenvalues[0] < -tolerance:
+        raise ValueError(f"{name} must be positive semi-definite")
 
 
 def solve_matrix_riccati(
@@ -71,7 +82,7 @@ def solve_matrix_riccati(
     P : ndarray, shape (n_grid + 1, d, d)
         Riccati solution at the grid points.
     """
-    if T <= 0.0:
+    if not np.isfinite(T) or T <= 0.0:
         raise ValueError(f"T must be positive, got {T}")
     if n_grid < 2:
         raise ValueError(f"n_grid must be >= 2, got {n_grid}")
@@ -80,7 +91,7 @@ def solve_matrix_riccati(
     R_arr = np.asarray(R, dtype=np.float64)
     _check_square_psd(Q_arr, "Q")
     _check_square_psd(Q_T_arr, "Q_T")
-    _check_square_psd(R_arr, "R")
+    _check_square_psd(R_arr, "R", positive_definite=True)
     d = Q_arr.shape[0]
     if Q_T_arr.shape != (d, d) or R_arr.shape != (d, d):
         raise ValueError(
@@ -170,7 +181,7 @@ def lq_mfg_analytical_covariance(
             raise ValueError(
                 f"{name} must have shape ({d}, {d}), got {M.shape}"
             )
-    _check_square_psd(R_arr, "R")
+    _check_square_psd(R_arr, "R", positive_definite=True)
     _check_square_psd(V0_arr, "V_0")
 
     R_inv = np.linalg.inv(R_arr)

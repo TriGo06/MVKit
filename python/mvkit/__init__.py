@@ -158,8 +158,8 @@ def simulate_linear_quadratic(
 
     where :math:`\bar X = (1/N) \sum_j X_j` is the empirical mean of the
     population. If the initial law is Gaussian :math:`X_0 \sim N(m_0, v_0)`,
-    the marginal law stays Gaussian for all :math:`t`, with mean and variance
-    given by
+    the marginal law stays Gaussian. The mean and the McKean-Vlasov
+    limit variance are
 
     .. math::
         m(t) &= m_0 \exp((a + b) t) \\
@@ -169,6 +169,11 @@ def simulate_linear_quadratic(
     (with the obvious :math:`v(t) = v_0 + \sigma^2 t` limit when
     :math:`a = 0`). The closed-form moments make this a useful benchmark for
     any mean-field integrator.
+
+    At finite N, write ``v_c`` for the variance formula with ``a=c``.
+    The marginal particle variance is ``(1-1/N)*v_a + v_(a+b)/N``.
+    The expected empirical population variance (``ddof=0``) is
+    ``(1-1/N)*v_a`` for independent identically distributed initial states.
 
     Parameters
     ----------
@@ -422,8 +427,7 @@ def simulate_mean_field_cir(
         RNG seed. Identical seeds give bit-exact identical trajectories.
     scheme : str, default "euler"
         Integrator: ``"euler"`` for Euler-Maruyama or ``"milstein"`` for
-        Milstein. Milstein has a smaller bias on this model thanks to its
-        strong-order-1 correction term :math:`0.25 \sigma^2 dt (Z^2 - 1)`,
+        Milstein. The correction term is :math:`0.25 \sigma^2 dt (Z^2 - 1)`,
         which is non-trivial here because the diffusion derivative
         :math:`d/dx (\sigma \sqrt{x}) = 0.5 \sigma / \sqrt{x}` is non-zero.
     increments : ndarray, optional

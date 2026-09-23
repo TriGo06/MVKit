@@ -3,8 +3,8 @@
 Two panels:
     Left:  log-y plot of the iterate increment ``||m^(k+1) - m^(k)||_inf``
            versus iteration ``k``, for both methods. Picard's geometric
-           decay vs Fictitious Play's slower polynomial decay should be
-           visible by inspection.
+           decay and the behavior of averaging can be compared. Small
+           increments alone do not establish a small fixed-point residual.
     Right: distance to the analytical equilibrium ``||m^(k) - m_0||_inf``
            versus iteration ``k`` (recall that in the symmetric LQ case
            the equilibrium mean is the constant ``m_0``).
@@ -46,11 +46,11 @@ def main() -> None:
 
     print(
         f"Picard: converged={sol_p.converged}, "
-        f"n_iterations={sol_p.n_iterations}"
+        f"n_iterations={sol_p.n_iterations}, residual={sol_p.fixed_point_residual:.3e}"
     )
     print(
         f"FP:     converged={sol_fp.converged}, "
-        f"n_iterations={sol_fp.n_iterations}"
+        f"n_iterations={sol_fp.n_iterations}, residual={sol_fp.fixed_point_residual:.3e}"
     )
 
     def increments(iterates: list[np.ndarray]) -> np.ndarray:

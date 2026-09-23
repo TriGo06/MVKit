@@ -19,12 +19,11 @@ The cost functional, against a fixed mean trajectory
         + \\tfrac{1}{2} (X_t - m_t)^\\top Q (X_t - m_t)\\big)\\,\\mathrm{d}t
       + \\tfrac{1}{2}(X_T - m_T)^\\top Q_T (X_T - m_T) \\Big].
 
-The HJB ansatz :math:`u(t, x) = \\tfrac{1}{2}(x - m)^\\top P(t) (x - m)
-+ Q^\\mathrm{lin}(t)^\\top(x - m) + R^\\mathrm{const}(t)` reduces the
-problem to a matrix Riccati ODE for :math:`P(t)` (independent of
-:math:`m`) and a linear ODE for the linear part. The optimal control is
-:math:`\\alpha^*(t, x) = -R^{-1} P(t)(x - m_t)`, so the closed-loop SDE
-is :math:`\\mathrm{d}X = -R^{-1} P (X - m)\\,\\mathrm{d}t + \\Sigma\\,\\mathrm{d}W`.
+The HJB ansatz ``u(t,x) = x.T P(t) x / 2 + s(t).T x + r(t)``
+reduces the problem to a matrix Riccati equation and the backward equation
+``s' = P R^{-1} s + Q m``, with ``s(T) = -Q_T m(T)``. The control is
+``alpha*(t,x) = -R^{-1}(P(t) x + s(t))``. Only for a constant input mean
+does this reduce to ``-R^{-1} P(t)(x-m)``.
 In the symmetric LQ-MFG case the equilibrium mean is constant
 (:math:`m_t = \\mu_0`) and the variance matrix
 :math:`V(t) = \\mathbb{E}[(X_t - \\mu_0)(X_t - \\mu_0)^\\top]` solves the
@@ -51,7 +50,9 @@ from typing import List, Optional
 import numpy as np
 
 from .._progress import progress_iter
+from ._lq_control import affine_response_operator
 from ._riccati_matrix import (
+    _check_square_psd,
     lq_mfg_analytical_covariance,
     solve_matrix_riccati,
 )
@@ -75,14 +76,15 @@ class LQMFGVectorSolution:
     V : ndarray, shape (G, d, d)
         Variance-matrix trajectory (analytical, from the Lyapunov ODE).
     x_trajectory : ndarray, shape (G, N, d)
-        Particle trajectory under the converged control.
+        Particle trajectory for the last best response; inspect ``converged``.
     m_iterates : list of ndarray
         Outer-iteration means; ``m_iterates[0]`` is the starting guess.
     n_iterations : int
         Number of outer updates performed.
     converged : bool
-        True if the sup-norm tolerance was met before
-        ``n_iterations_max``.
+        True if ``fixed_point_residual < tol``.
+    fixed_point_residual : float
+        Sup norm of ``BR(m) - m`` at the returned mean and fixed noise.
     """
 
     t_grid: np.ndarray
@@ -93,6 +95,7 @@ class LQMFGVectorSolution:
     m_iterates: List[np.ndarray] = field(default_factory=list)
     n_iterations: int = 0
     converged: bool = False
+    fixed_point_residual: float = float("inf")
 
 
 def _validate_inputs(
@@ -101,7 +104,7 @@ def _validate_inputs(
     n_particles: int, n_grid: int,
     n_iterations_max: int, tol: float,
 ) -> int:
-    if T <= 0.0:
+    if not np.isfinite(T) or T <= 0.0:
         raise ValueError(f"T must be positive, got {T}")
     if n_particles < 2:
         raise ValueError(f"n_particles must be >= 2, got {n_particles}")
@@ -111,7 +114,7 @@ def _validate_inputs(
         raise ValueError(
             f"n_iterations_max must be >= 1, got {n_iterations_max}"
         )
-    if tol <= 0.0:
+    if not np.isfinite(tol) or tol <= 0.0:
         raise ValueError(f"tol must be positive, got {tol}")
 
     Q_arr = np.asarray(Q, dtype=np.float64)
@@ -146,7 +149,9 @@ def _draw_x0(
     """
     rng = np.random.default_rng(int(seed))
     d = mu_0_mean.shape[0]
-    L = np.linalg.cholesky(V_0) if d > 0 else np.zeros((0, 0))
+    _check_square_psd(V_0, "mu_0_var")
+    values, vectors = np.linalg.eigh(V_0)
+    L = vectors * np.sqrt(np.maximum(values, 0.0))
     z = rng.standard_normal(size=(int(n_particles), d))
     return mu_0_mean + z @ L.T
 
@@ -155,15 +160,14 @@ def _simulate_under_vector_control(
     x0: np.ndarray,
     t_grid: np.ndarray,
     P: np.ndarray,
-    m_input: np.ndarray,
+    linear_term: np.ndarray,
     Sigma: np.ndarray,
     R_inv: np.ndarray,
     seed: int,
 ) -> np.ndarray:
-    """Forward Euler-Maruyama for ``dX = -R^{-1} P (X - m_input) dt
-    + Sigma dW`` on the time grid.
+    """Forward Euler-Maruyama for ``dX = -R^{-1}(P X + s) dt + Sigma dW``.
 
-    ``P`` has shape ``(G, d, d)``, ``m_input`` has shape ``(G, d)``,
+    ``P`` has shape ``(G, d, d)``, ``linear_term`` has shape ``(G, d)``,
     ``Sigma`` has shape ``(d, d)``. Returns the trajectory of shape
     ``(G, N, d)``.
     """
@@ -176,34 +180,12 @@ def _simulate_under_vector_control(
     for step in range(G - 1):
         dt = float(t_grid[step + 1] - t_grid[step])
         A = R_inv @ P[step]  # (d, d)
-        drift = -(x - m_input[step]) @ A.T
+        drift = -x @ A.T - linear_term[step] @ R_inv.T
         z = rng.standard_normal(size=(N, d))
         noise = z @ Sigma.T
         x = x + drift * dt + noise * np.sqrt(dt)
         traj[step + 1] = x
     return traj
-
-
-def _lq_vector_best_response(
-    m_input: np.ndarray,
-    P: np.ndarray,
-    t_grid: np.ndarray,
-    mu_0_mean: np.ndarray,
-    mu_0_var: np.ndarray,
-    Sigma: np.ndarray,
-    R_inv: np.ndarray,
-    n_particles: int,
-    seed: int,
-) -> np.ndarray:
-    """BR(m_input) for the vector LQ-MFG. Returns the empirical mean
-    trajectory of the simulated particles, shape ``(G, d)``.
-    """
-    x0 = _draw_x0(mu_0_mean, mu_0_var, n_particles, seed)
-    traj = _simulate_under_vector_control(
-        x0=x0, t_grid=t_grid, P=P, m_input=m_input,
-        Sigma=Sigma, R_inv=R_inv, seed=seed,
-    )
-    return traj.mean(axis=1)
 
 
 def _initial_mean_iterate(
@@ -216,6 +198,8 @@ def _initial_mean_iterate(
         raise ValueError(
             f"m_initial must have shape ({G}, {d}), got {arr.shape}"
         )
+    if not np.isfinite(arr).all():
+        raise ValueError("m_initial must be finite")
     return arr
 
 
@@ -250,7 +234,7 @@ def solve_lq_mfg_vector(
        Picard, historical average for Fictitious Play), simulate the
        controlled SDE forward, set ``m^(k+1) = empirical mean of
        trajectory``. Stop when
-       ``max_t || m^(k+1) - m^(k) ||_inf < tol``.
+       ``max_t || BR(m^(k+1)) - m^(k+1) ||_inf < tol``.
 
     See :func:`mvkit.mfg.solve_lq_mfg` for the scalar version (``d = 1``);
     the two solvers agree on the d=1 LQ-MFG within MC tolerance.
@@ -258,7 +242,7 @@ def solve_lq_mfg_vector(
     Parameters
     ----------
     Q, Q_T : ndarray, shape (d, d)
-        Symmetric state-cost and terminal-cost matrices. Both should be
+        Symmetric state-cost and terminal-cost matrices. Both must be
         positive semi-definite.
     Sigma : ndarray, shape (d, d)
         Noise scale matrix. Total diffusion is ``Sigma @ Sigma.T``.
@@ -279,7 +263,7 @@ def solve_lq_mfg_vector(
     n_iterations_max : int, default 20
         Cap on outer-iteration updates.
     tol : float, default 1e-4
-        Sup-norm tolerance on consecutive mean iterates.
+        Sup-norm tolerance on ``BR(m) - m`` at the returned mean.
     seed : int, default 42
         Master RNG seed; identical seed plus identical inputs give
         identical outputs.
@@ -303,7 +287,8 @@ def solve_lq_mfg_vector(
         problems in 1D.
     """
     if R is None:
-        d_guess = np.asarray(Q).shape[0] if hasattr(Q, "shape") else 1
+        Q_shape = np.asarray(Q).shape
+        d_guess = Q_shape[0] if len(Q_shape) == 2 else 1
         R = np.eye(d_guess)
     if method not in _VALID_METHODS:
         raise ValueError(
@@ -326,6 +311,11 @@ def solve_lq_mfg_vector(
     mu_arr = np.asarray(mu_0_mean, dtype=np.float64)
     V0_arr = np.asarray(mu_0_var, dtype=np.float64)
 
+    for name, matrix in (("Q", Q_arr), ("Q_T", Q_T_arr), ("mu_0_var", V0_arr)):
+        _check_square_psd(matrix, name)
+    _check_square_psd(R_arr, "R", positive_definite=True)
+    if not np.isfinite(Sigma_arr).all() or not np.isfinite(mu_arr).all():
+        raise ValueError("Sigma and mu_0_mean must be finite")
     R_inv = np.linalg.inv(R_arr)
 
     t_grid, P = solve_matrix_riccati(Q_arr, Q_T_arr, R_arr, T, n_grid=n_grid)
@@ -334,7 +324,19 @@ def solve_lq_mfg_vector(
     m_curr = _initial_mean_iterate(m_initial, G, d, mu_arr)
     m_iterates: List[np.ndarray] = [m_curr.copy()]
     converged = False
-    m_input_last = m_curr.copy()
+    operator = affine_response_operator(P, Q_arr, Q_T_arr, R_inv, t_grid)
+    base = _simulate_under_vector_control(
+        _draw_x0(mu_arr, V0_arr, int(n_particles), int(seed)), t_grid,
+        P, np.zeros((G, d)), Sigma_arr, R_inv, int(seed),
+    )
+    base_mean = base.mean(axis=1)
+
+    def best_response(m):
+        _, shift = operator(m)
+        return base_mean + shift, shift
+
+    residual = float("inf")
+    last_shift = np.zeros((G, d))
 
     sum_post_burnin: Optional[np.ndarray] = None
     count_post_burnin = 0
@@ -357,20 +359,9 @@ def solve_lq_mfg_vector(
                     count_post_burnin = 1
                 m_input = sum_post_burnin / count_post_burnin
 
-        m_input_last = m_input.copy() if m_input is not m_curr else m_curr.copy()
-
-        m_next = _lq_vector_best_response(
-            m_input=m_input,
-            P=P,
-            t_grid=t_grid,
-            mu_0_mean=mu_arr,
-            mu_0_var=V0_arr,
-            Sigma=Sigma_arr,
-            R_inv=R_inv,
-            n_particles=int(n_particles),
-            seed=int(seed),
-        )
-        diff = float(np.max(np.abs(m_next - m_curr)))
+        m_next, last_shift = best_response(m_input)
+        check, _ = best_response(m_next)
+        residual = float(np.max(np.abs(check - m_next)))
         m_iterates.append(m_next.copy())
 
         if method == "fictitious_play" and k >= damping_burn_in:
@@ -379,17 +370,15 @@ def solve_lq_mfg_vector(
             count_post_burnin += 1
 
         m_curr = m_next
-        if diff < tol:
+        if residual < tol:
             converged = True
             break
 
-    # Reproduce the trajectory consistent with the converged mean by
-    # re-running the simulation under the last BR input.
-    x0 = _draw_x0(mu_arr, V0_arr, int(n_particles), int(seed))
-    traj = _simulate_under_vector_control(
-        x0=x0, t_grid=t_grid, P=P, m_input=m_input_last,
-        Sigma=Sigma_arr, R_inv=R_inv, seed=int(seed),
-    )
+    traj = base + last_shift[:, None, :]
+    m_curr = traj.mean(axis=1)
+    check, _ = best_response(m_curr)
+    residual = float(np.max(np.abs(check - m_curr)))
+    converged = residual < tol
 
     n_iterations = len(m_iterates) - 1
     V = lq_mfg_analytical_covariance(P, t_grid, Sigma_arr, R_arr, V0_arr)
@@ -403,4 +392,5 @@ def solve_lq_mfg_vector(
         m_iterates=m_iterates,
         n_iterations=n_iterations,
         converged=converged,
+        fixed_point_residual=residual,
     )

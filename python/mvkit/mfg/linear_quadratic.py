@@ -16,7 +16,9 @@ and minimizes, against a fixed mean trajectory :math:`m_t`,
 
 The HJB ansatz :math:`u(t,x) = \\tfrac{1}{2} P(t) x^2 + Q(t) x + R(t)` reduces
 the problem to a Riccati ODE for :math:`P(t)` (independent of :math:`m`) and a
-linear ODE for :math:`Q(t)` driven by :math:`m`. The optimal control is
+linear ODE ``Q'(t) = P(t) Q(t) + q m(t)``, with
+``Q(T) = -q_T m(T)``. The shortcut ``Q = -P m`` applies only to a
+constant input mean. The optimal control is
 :math:`\\alpha^*(t, x) = -P(t) x - Q(t)`, so simulation under the equilibrium
 control is a controlled SDE with time-varying linear drift. In the symmetric
 LQ case the equilibrium mean is constant, :math:`m_t = m_0`, and the variance
@@ -27,10 +29,11 @@ Two iterative schemes share a common best-response operator BR(m): given an
 input mean trajectory m, simulate N particles under the optimal control
 against m and return the empirical mean. Picard sets m^(k+1) = BR(m^(k));
 Fictitious Play sets m^(k+1) = BR(bar_m^(k)) where bar_m^(k) is the
-historical average of m^(0), ..., m^(k). On LQ both converge to the same
-equilibrium; Picard is geometric where it contracts, while Fictitious Play
-trades the contraction requirement for an O(1/k) rate (Cardaliaguet and
-Hadikhanloo, 2017).
+historical average of m^(0), ..., m^(k). Picard converges geometrically
+when the discrete BR map is a contraction. Fictitious Play convergence
+requires additional structure; the potential-game theorem of Cardaliaguet
+and Hadikhanloo (2017) is not a universal O(1/k) sup-norm guarantee.
+The stopping test evaluates ||BR(m) - m|| at the returned mean.
 
 References
 ----------
@@ -52,6 +55,7 @@ from scipy.integrate import solve_ivp
 
 from .._progress import progress_iter
 from ._riccati import solve_riccati
+from ._lq_control import affine_response_operator
 
 
 @dataclass
@@ -83,8 +87,9 @@ class LQMFGSolution:
         Number of Picard updates performed (length of
         ``m_iterates`` minus one).
     converged : bool
-        True if ``max_t |m^(k+1)(t) - m^(k)(t)| < tol`` was met before
-        ``n_iterations_max`` updates.
+        True if ``fixed_point_residual < tol``.
+    fixed_point_residual : float
+        Sup norm of ``BR(m) - m`` for the returned mean and fixed noise.
     """
 
     t_grid: np.ndarray
@@ -95,6 +100,7 @@ class LQMFGSolution:
     m_iterates: list = field(default_factory=list)
     n_iterations: int = 0
     converged: bool = False
+    fixed_point_residual: float = float("inf")
 
 
 def lq_mfg_analytical_variance(
@@ -217,37 +223,6 @@ def _draw_x0(
     )
 
 
-def _simulate_with_seed(
-    m_input: np.ndarray,
-    P: np.ndarray,
-    t_grid: np.ndarray,
-    mu_0_mean: float,
-    mu_0_var: float,
-    sigma: float,
-    n_particles: int,
-    seed: int,
-) -> np.ndarray:
-    """Simulate the controlled SDE under input mean ``m_input`` from a
-    reproducible ``seed``. Returns the trajectory of shape ``(G, N)``.
-
-    Same ``seed`` plus same ``m_input`` give the same trajectory, so this
-    can be invoked once per iteration to produce the BR mean and once
-    again at the end of the solve to recover the trajectory consistent
-    with the converged mean, with no extra randomness.
-    """
-    x0 = _draw_x0(mu_0_mean, mu_0_var, n_particles, seed)
-    Q = -P * m_input
-    sim_rng = np.random.default_rng(int(seed) ^ _SIM_SEED_MASK)
-    return _simulate_under_control(
-        x0=x0,
-        t_grid=t_grid,
-        P=P,
-        Q=Q,
-        sigma=float(sigma),
-        rng=sim_rng,
-    )
-
-
 def _lq_best_response(
     m_input: np.ndarray,
     P: np.ndarray,
@@ -257,49 +232,20 @@ def _lq_best_response(
     sigma: float,
     n_particles: int,
     seed: int,
+    *,
+    q: float,
+    q_T: float,
 ) -> np.ndarray:
-    """Best-response operator BR(m_input) for the LQ-MFG.
-
-    Given an input mean trajectory ``m_input(t)``, simulate N particles
-    under the optimal control ``alpha*(t, x) = -P(t) x + P(t) m_input(t)``
-    starting from ``x0 ~ N(mu_0_mean, mu_0_var)``, and return the
-    empirical mean of the simulated trajectory at each grid time.
-
-    The ``seed`` deterministically fixes both ``x0`` and the Brownian
-    increments. With fixed noise, BR is an affine function of ``m_input``,
-    which is the property both Picard and Fictitious Play exploit.
-
-    Parameters
-    ----------
-    m_input : ndarray, shape (G,)
-        Input mean trajectory.
-    P : ndarray, shape (G,)
-        Riccati solution.
-    t_grid : ndarray, shape (G,)
-        Time grid.
-    mu_0_mean, mu_0_var : float
-        Initial Gaussian distribution.
-    sigma : float
-        Diffusion coefficient.
-    n_particles : int
-        Particle count.
-    seed : int
-        RNG seed.
-
-    Returns
-    -------
-    br : ndarray, shape (G,)
-        BR(m_input) at the grid points.
-    """
-    traj = _simulate_with_seed(
-        m_input,
-        P,
-        t_grid,
-        mu_0_mean,
-        mu_0_var,
-        sigma,
-        n_particles,
-        seed,
+    """Best response to a prescribed mean, including the backward affine ODE."""
+    operator = affine_response_operator(
+        P[:, None, None], np.array([[q]]), np.array([[q_T]]),
+        np.eye(1), t_grid,
+    )
+    linear, _ = operator(np.asarray(m_input)[:, None])
+    traj = _simulate_under_control(
+        _draw_x0(mu_0_mean, mu_0_var, n_particles, seed), t_grid,
+        P, linear[:, 0], sigma,
+        np.random.default_rng(int(seed) ^ _SIM_SEED_MASK),
     )
     return traj.mean(axis=1)
 
@@ -315,6 +261,11 @@ def _validate_common_inputs(
     n_iterations_max: int,
     tol: float,
 ) -> None:
+    values = {"q": q, "q_T": q_T, "sigma": sigma, "T": T,
+              "mu_0_var": mu_0_var, "tol": tol}
+    for name, value in values.items():
+        if not np.isfinite(value):
+            raise ValueError(f"{name} must be finite, got {value}")
     if T <= 0.0:
         raise ValueError(f"T must be positive, got {T}")
     if q < 0.0:
@@ -340,6 +291,8 @@ def _validate_common_inputs(
 def _initial_mean(
     m_initial: Optional[np.ndarray], g: int, mu_0_mean: float
 ) -> np.ndarray:
+    if not np.isfinite(mu_0_mean):
+        raise ValueError("mu_0_mean must be finite")
     if m_initial is None:
         return np.full(g, float(mu_0_mean), dtype=np.float64)
     arr = np.asarray(m_initial, dtype=np.float64).copy()
@@ -347,6 +300,8 @@ def _initial_mean(
         raise ValueError(
             f"m_initial must have shape ({g},), got {arr.shape}"
         )
+    if not np.isfinite(arr).all():
+        raise ValueError("m_initial must be finite")
     return arr
 
 
@@ -377,7 +332,7 @@ def solve_lq_mfg(
        by default).
     3. Repeat: form an input mean :math:`m^\mathrm{in}_k`, set
        :math:`m^{(k+1)} = \mathrm{BR}(m^\mathrm{in}_k)`. Stop when
-       :math:`\max_t |m^{(k+1)} - m^{(k)}| < \mathrm{tol}`.
+       :math:`\max_t |\mathrm{BR}(m^{(k+1)}) - m^{(k+1)}| < \mathrm{tol}`.
 
     Parameter ``method`` selects the rule for :math:`m^\mathrm{in}_k`:
 
@@ -388,10 +343,11 @@ def solve_lq_mfg(
       to a Picard step (input is :math:`m^{(k)}`), then the historical
       average accumulates from iteration ``b`` onward.
 
-    The Brownian increments are reseeded identically at the start of each
-    iteration. With fixed noise the BR map becomes affine in :math:`m`,
-    which suppresses spurious MC fluctuations between iterations and lets
-    Picard's fixed-point error decay geometrically.
+    One base particle trajectory is simulated with fixed Brownian noise.
+    Linearity supplies the deterministic shift for each input mean, so
+    iterations do not repeat the particle simulation. The affine HJB
+    coefficient is integrated backward with the trapezoidal rule; particle
+    trajectories use forward Euler-Maruyama.
 
     Parameters
     ----------
@@ -411,7 +367,7 @@ def solve_lq_mfg(
         Cap on iteration updates. Fictitious Play typically needs more
         iterations than Picard; bump this if you select that method.
     tol : float, default 1e-4
-        Sup-norm tolerance on consecutive mean iterates.
+        Sup-norm tolerance on ``BR(m) - m`` at the returned mean.
     seed : int, default 42
         Master RNG seed. Identical seeds plus identical inputs give
         identical outputs.
@@ -420,11 +376,10 @@ def solve_lq_mfg(
         Defaults to a constant trajectory equal to ``mu_0_mean``. Useful
         for stress-testing the contraction property of the iteration.
     method : {"picard", "fictitious_play"}, default "picard"
-        Selects the iteration scheme. Picard converges fast where the BR
-        map is contracting (LQ-MFG with moderate ``int_0^T P``); Fictitious
-        Play trades the contraction requirement for slower O(1/k)
-        convergence and better robustness on non-monotone perturbations
-        (Cardaliaguet and Hadikhanloo, 2017).
+        Selects the iteration scheme. Picard requires a contracting BR
+        map for geometric convergence. Fictitious Play averages earlier
+        means and may need many more iterations; neither method is
+        guaranteed to converge for arbitrary parameters.
     damping_burn_in : int, default 0
         Only used when ``method="fictitious_play"``. The historical
         average starts accumulating from iteration ``damping_burn_in``;
@@ -469,7 +424,24 @@ def solve_lq_mfg(
     m_curr = _initial_mean(m_initial, g, mu_0_mean)
     m_iterates: list = [m_curr.copy()]
     converged = False
-    m_input_last = m_curr.copy()
+    operator = affine_response_operator(
+        P[:, None, None], np.array([[q]]), np.array([[q_T]]), np.eye(1), t_grid,
+    )
+    # Linearity separates the reusable random trajectory from a deterministic
+    # shift. Every outer iteration uses exactly the same particle noise.
+    base = _simulate_under_control(
+        _draw_x0(mu_0_mean, mu_0_var, n_particles, seed), t_grid,
+        P, np.zeros(g), float(sigma),
+        np.random.default_rng(int(seed) ^ _SIM_SEED_MASK),
+    )
+    base_mean = base.mean(axis=1)
+
+    def best_response(m):
+        _, shift = operator(m[:, None])
+        return base_mean + shift[:, 0], shift[:, 0]
+
+    residual = float("inf")
+    last_shift = np.zeros(g)
 
     sum_post_burnin: Optional[np.ndarray] = None
     count_post_burnin = 0
@@ -492,19 +464,9 @@ def solve_lq_mfg(
                     count_post_burnin = 1
                 m_input = sum_post_burnin / count_post_burnin
 
-        m_input_last = m_input.copy() if m_input is not m_curr else m_curr.copy()
-
-        m_next = _lq_best_response(
-            m_input=m_input,
-            P=P,
-            t_grid=t_grid,
-            mu_0_mean=mu_0_mean,
-            mu_0_var=mu_0_var,
-            sigma=sigma,
-            n_particles=n_particles,
-            seed=seed,
-        )
-        diff = float(np.max(np.abs(m_next - m_curr)))
+        m_next, last_shift = best_response(m_input)
+        check, _ = best_response(m_next)
+        residual = float(np.max(np.abs(check - m_next)))
         m_iterates.append(m_next.copy())
 
         if method == "fictitious_play" and k >= damping_burn_in:
@@ -513,23 +475,15 @@ def solve_lq_mfg(
             count_post_burnin += 1
 
         m_curr = m_next
-        if diff < tol:
+        if residual < tol:
             converged = True
             break
 
-    # Reproduce the trajectory consistent with the converged mean by
-    # re-running the simulation under the last BR input. Same seed, same
-    # output as the final loop iteration.
-    traj = _simulate_with_seed(
-        m_input=m_input_last,
-        P=P,
-        t_grid=t_grid,
-        mu_0_mean=mu_0_mean,
-        mu_0_var=mu_0_var,
-        sigma=sigma,
-        n_particles=n_particles,
-        seed=seed,
-    )
+    traj = base + last_shift[:, None]
+    m_curr = traj.mean(axis=1)
+    check, _ = best_response(m_curr)
+    residual = float(np.max(np.abs(check - m_curr)))
+    converged = residual < tol
 
     n_iterations = len(m_iterates) - 1
     V = lq_mfg_analytical_variance(P, t_grid, float(sigma), float(mu_0_var))
@@ -543,6 +497,7 @@ def solve_lq_mfg(
         m_iterates=m_iterates,
         n_iterations=n_iterations,
         converged=converged,
+        fixed_point_residual=residual,
     )
 
 
@@ -566,14 +521,13 @@ def solve_lq_mfg_fictitious_play(
 
     Convenience wrapper around :func:`solve_lq_mfg` with
     ``method="fictitious_play"``. The default ``n_iterations_max`` is
-    raised to 50 to reflect the slower O(1/k) convergence rate compared
-    to Picard's geometric.
+    raised to 50. This cap does not guarantee convergence; always inspect
+    ``converged`` and ``fixed_point_residual``. The update uses the historical
+    average as input to the same best-response operator as Picard.
 
-    The update rule is :math:`m^{(k+1)} = \mathrm{BR}(\bar m^{(k)})`
-    where :math:`\bar m^{(k)}` is the historical average of past iterates.
-    Cardaliaguet and Hadikhanloo (2017) show that under MFG monotonicity,
-    Fictitious Play converges to the equilibrium without requiring the BR
-    map to be a strict contraction, the price being the slower rate.
+    Cardaliaguet and Hadikhanloo (2017) establish convergence for potential
+    MFGs under their regularity assumptions. Monotonicity alone does not
+    imply a contracting best-response map or an O(1/k) iterate error bound.
 
     Parameters
     ----------

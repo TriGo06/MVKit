@@ -24,11 +24,11 @@ Discretization on a rectangular grid:
 Per backward step the cost is one sparse triangular solve of size
 :math:`n_x n_y`, which is fast for :math:`n_x, n_y \\lesssim 200`.
 
-CFL guard: the explicit-Hamiltonian step requires
-:math:`\\Delta t (\\max|\\partial_x u| / \\Delta x +
-\\max|\\partial_y u| / \\Delta y) \\le 1`. We raise above ``2.0`` (the
-same hard limit as the 1D solver, which leaves headroom for the
-implicit-diffusion smoothing).
+CFL guard: the explicit Hamiltonian step requires a bound of one on
+``dt * max(speed_x / dx + speed_y / dy)``, where each axis sums the
+positive backward slope and the magnitude of the negative forward slope.
+Both branches contribute at a local maximum. Implicit diffusion does not
+justify a larger monotonicity bound.
 
 Both periodic (the grid wraps in both axes) and Neumann
 (:math:`\\partial_n u = 0` at all four boundaries via reflecting ghost
@@ -45,7 +45,7 @@ from scipy.sparse import csc_matrix, eye as sparse_eye, kron as sparse_kron
 from scipy.sparse.linalg import SuperLU, splu
 
 
-_CFL_HARD_LIMIT = 2.0
+_CFL_HARD_LIMIT = 1.0
 
 
 def _normalize_sigma_2d(
@@ -317,6 +317,9 @@ def solve_hjb_2d(
             f"{terminal_arr.shape}"
         )
 
+    if not np.isfinite(terminal_arr).all():
+        raise ValueError("terminal must be finite")
+
     n_t_int = int(n_t)
     dt = float(T) / n_t_int
     t_grid = np.linspace(0.0, float(T), n_t_int + 1)
@@ -335,17 +338,19 @@ def solve_hjb_2d(
             u_n, dx, dy, boundary,
         )
 
-        # CFL: dt * (max|d_x u| / dx + max|d_y u| / dy) <= hard limit.
-        max_grad_x = float(max(
-            np.max(np.abs(Dx_minus)), np.max(np.abs(Dx_plus)),
-        ))
-        max_grad_y = float(max(
-            np.max(np.abs(Dy_minus)), np.max(np.abs(Dy_plus)),
-        ))
-        cfl = max_grad_x * dt / dx + max_grad_y * dt / dy
+        # Sum outgoing EO speeds at each cell, including both branches
+        # and both axes, to preserve monotonicity of the explicit step.
+        speed_x = np.maximum(Dx_minus, 0.0) - np.minimum(Dx_plus, 0.0)
+        speed_y = np.maximum(Dy_minus, 0.0) - np.minimum(Dy_plus, 0.0)
+        max_grad_x = float(np.max(speed_x))
+        max_grad_y = float(np.max(speed_y))
+        cfl = dt * float(np.max(speed_x / dx + speed_y / dy))
         if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
             step_idx = n_t_int - n + 1
-            recommended_n_t = int(np.ceil(cfl * n_t_int * 1.1))
+            recommended_n_t = (
+                int(np.ceil(cfl * n_t_int * 1.1)) if np.isfinite(cfl)
+                else 2 * n_t_int
+            )
             raise ValueError(
                 f"HJB 2D explicit-Hamiltonian CFL violated at step "
                 f"{step_idx}/{n_t_int} (t = {float(t_grid[n]):.4f}): "

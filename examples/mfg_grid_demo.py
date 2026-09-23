@@ -9,9 +9,9 @@ running cost is
 
 with :math:`\\lambda > 0`. The first term pulls agents toward the
 target; the second pushes them apart wherever the density spikes.
-This is the standard Lasry-Lions monotone case for which Picard is
-contracting, so the grid solver converges quickly. The LQ closed form
-does not apply here, which is the whole point.
+This coupling is Lasry-Lions monotone. That property does not by itself
+make the Picard map contracting; convergence must be checked through
+the fixed-point residual. The LQ closed form does not apply here.
 
 Three panels:
     Top-left:  density at three time slices for weak congestion

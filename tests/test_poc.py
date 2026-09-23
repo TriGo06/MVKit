@@ -1,12 +1,9 @@
 """Tests for the propagation-of-chaos rate-estimation utility.
 
-The Fournier-Guillin (2015) theorem gives ``E[W_2(emp_N, mu)] = O(N^{-1/2})``
-in dimension 1 for laws with finite ``(4 + epsilon)``-th moment. The
-slope-fit tests below check that the empirical convergence on Gaussian
-samples and on the linear-quadratic McKean-Vlasov model (whose marginal
-law at terminal time is Gaussian, so the assumptions are clearly met)
-falls in ``[-0.6, -0.4]``. These bounds are tight; the theorem is solid,
-so a failure should be investigated as a bug, not relaxed.
+The slope fits below are empirical Gaussian benchmarks over fixed sample
+sizes and seeds. They do not establish a universal Wasserstein rate. The
+general 1D moment bound controls E[W2**2] at order N**(-1/2), rather than
+E[W2] at that order; other distributions can converge more slowly.
 """
 
 from __future__ import annotations
@@ -60,8 +57,7 @@ def test_w2_to_reference_inv_cdf_matches_between_samples():
 
 
 def test_rate_on_gaussian_reference():
-    """Gaussian samples vs analytical N(0, 1) reference. Fournier-Guillin
-    predicts slope = -0.5; we assert [-0.6, -0.4]."""
+    """Check the observed Gaussian slope over the selected sample-size range."""
     n_values = [100, 300, 1_000, 3_000, 10_000]
 
     def simulator(n: int, seed: int) -> np.ndarray:

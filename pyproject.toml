@@ -20,10 +20,10 @@ classifiers = [
     "Programming Language :: Rust",
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
-dependencies = ["numpy>=1.23"]
+dependencies = ["numpy>=1.23", "scipy>=1.11"]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "scipy>=1.11", "matplotlib>=3.7", "tqdm>=4.60"]
+dev = ["pytest>=8", "matplotlib>=3.7", "tqdm>=4.60"]
 progress = ["tqdm>=4.60"]
 
 [project.urls]

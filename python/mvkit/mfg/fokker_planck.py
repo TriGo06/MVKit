@@ -246,6 +246,9 @@ def solve_fokker_planck(
             f"initial must have shape ({n_x},), got {initial_arr.shape}"
         )
 
+    if not np.isfinite(initial_arr).all() or (initial_arr < 0).any():
+        raise ValueError("initial must be finite and non-negative")
+
     n_t_int = int(n_t)
     dt = float(T) / n_t_int
     t_grid = np.linspace(0.0, float(T), n_t_int + 1)
@@ -269,16 +272,17 @@ def solve_fokker_planck(
                 f"drift must return shape ({n_x},), got {alpha_n.shape}"
             )
 
-        # Explicit-convection CFL: dt * max|drift| / dx <= 1 is the
-        # textbook upwind condition. Implicit diffusion buys headroom
-        # in practice, so we raise on > 2.0 (catastrophic) rather than
-        # strict > 1.0 (which would produce false positives on borderline
-        # cases that work fine).
-        _CFL_HARD_LIMIT = 2.0
+        # A monotone explicit upwind step preserves non-negative mass
+        # when its transport CFL is at most one. Diffusion cannot
+        # justify a larger bound uniformly, particularly as sigma -> 0.
+        _CFL_HARD_LIMIT = 1.0
         max_alpha = float(np.max(np.abs(alpha_n)))
         cfl = max_alpha * dt / dx
         if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
-            recommended_n_t = int(np.ceil(cfl * n_t_int * 1.1))
+            recommended_n_t = (
+                int(np.ceil(cfl * n_t_int * 1.1)) if np.isfinite(cfl)
+                else 2 * n_t_int
+            )
             raise ValueError(
                 f"Fokker-Planck explicit-convection CFL violated at "
                 f"step {n + 1}/{n_t_int} (t = {float(t_grid[n]):.4f}): "
