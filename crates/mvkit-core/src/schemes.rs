@@ -132,15 +132,17 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 
 /// Milstein integrator for diagonal mean-field SDEs.
 ///
-/// For an SDE with diagonal diffusion `dX^k = b^k dt + sigma^k dW^k`, the
-/// Milstein update reads
+/// For diffusion satisfying [`MeanFieldSDE::supports_milstein`], the
+/// coordinatewise Milstein update reads
 /// ```text
 /// X_{n+1}^k = X_n^k + b^k dt + sigma^k sqrt(dt) Z^k
 ///                  + 0.5 sigma^k (sigma^k)' dt (Z^k^2 - 1)
 /// ```
 /// where `(sigma^k)' = d sigma^k / d X_i^k` is the diagonal of the
-/// diffusion Jacobian. The new term gives strong order 1 (vs Euler's
-/// strong order 1/2). When the diffusion is constant in state (the
+/// diffusion Jacobian. Strong order 1 requires the usual coefficient
+/// regularity and moment assumptions as well as the structural condition;
+/// diagonal diffusion alone is insufficient. Cross-coordinate iterated
+/// stochastic integrals are not implemented. When diffusion is constant (the
 /// default `diffusion_derivative` returns zero), the correction vanishes
 /// and the scheme reduces to Euler-Maruyama exactly.
 ///
@@ -151,7 +153,8 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 /// produce bit-exact identical trajectories.
 ///
 /// Same arguments and return shape as [`euler_maruyama`], including the
-/// optional precomputed `increments` array.
+/// optional precomputed `increments` array. Panics if the model has not
+/// explicitly opted in through `supports_milstein`.
 pub fn milstein<M: MeanFieldSDE>(
     model: &M,
     x0: &Array2<f64>,
@@ -161,6 +164,10 @@ pub fn milstein<M: MeanFieldSDE>(
     seed: u64,
     increments: Option<&Array3<f64>>,
 ) -> Array3<f64> {
+    assert!(
+        model.supports_milstein(),
+        "coordinatewise Milstein requires supports_milstein() and vanishing cross-noise derivatives"
+    );
     assert_eq!(x0.ncols(), model.dim(), "state dim mismatch");
     assert!(n_steps > 0, "n_steps must be > 0");
     assert!(t_final > 0.0, "t_final must be > 0");
@@ -256,6 +263,40 @@ mod tests {
     use super::*;
     use crate::models::{CuckerSmale, Kuramoto, LinearQuadratic};
     use approx::assert_abs_diff_eq;
+
+    struct CrossDiffusion;
+
+    impl MeanFieldSDE for CrossDiffusion {
+        fn dim(&self) -> usize {
+            2
+        }
+
+        fn drift(&self, _: ndarray::ArrayView2<f64>, mut out: ndarray::ArrayViewMut2<f64>) {
+            out.fill(0.0);
+        }
+
+        fn diffusion(&self, state: ndarray::ArrayView2<f64>, mut out: ndarray::ArrayViewMut2<f64>) {
+            out.column_mut(0).fill(1.0);
+            out.column_mut(1).assign(&state.column(0));
+        }
+    }
+
+    #[test]
+    #[should_panic(expected = "vanishing cross-noise derivatives")]
+    fn milstein_rejects_cross_coordinate_diffusion() {
+        // dX_1 = dW_1, dX_2 = X_1 dW_2 needs a cross iterated integral,
+        // although its diagonal diffusion derivatives are both zero.
+        milstein(&CrossDiffusion, &Array2::zeros((2, 2)), 1.0, 10, 0, 0, None);
+    }
+
+    #[test]
+    fn constant_diffusion_milstein_matches_euler() {
+        let model = LinearQuadratic::new(-0.5, 0.1, 0.3);
+        let x0 = Array2::zeros((4, 1));
+        let euler = euler_maruyama(&model, &x0, 1.0, 20, 1, 7, None);
+        let mil = milstein(&model, &x0, 1.0, 20, 1, 7, None);
+        assert_eq!(euler, mil);
+    }
 
     #[test]
     fn kuramoto_free_rotation_uncoupled_noiseless() {

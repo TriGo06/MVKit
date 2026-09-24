@@ -10,12 +10,13 @@ A user-supplied :class:`MFGProblem2D` specifies the running cost
 density :math:`m_0(x, y)`, isotropic diffusion :math:`\\sigma`,
 horizon :math:`T`, rectangular spatial domain, and the per-axis
 spatial discretization. The solver discretizes time at :math:`n_t + 1`
-grid points and iterates HJB / FP until consecutive density iterates
-differ by less than ``tol`` in sup norm.
+grid points and iterates HJB / FP until the returned density satisfies
+``||BR(m) - m||_inf < tol``.
 
 Same dispatch as :func:`mvkit.mfg.solve_mfg` (the 1D solver):
 ``method="picard"`` (default, geometric where contracting) or
-``method="fictitious_play"`` (slower :math:`O(1/k)` rate but contraction-free).
+``method="fictitious_play"`` (historical averaging). Convergence depends
+on the coupling and on the assumptions discussed in the 1D solver.
 
 Validated quantitatively against the closed-form **vector LQ-MFG**
 from :func:`mvkit.mfg.solve_lq_mfg_vector` at d=2: configuring an
@@ -108,6 +109,10 @@ class MFGGrid2DSolution:
         Outer-iteration density iterates.
     n_iterations : int
     converged : bool
+        True if ``fixed_point_residual < tol``.
+    fixed_point_residual : float
+        Sup norm of ``BR(m) - m``. The returned value function and drift
+        solve the HJB against the returned density.
     """
 
     t_grid: np.ndarray
@@ -119,6 +124,7 @@ class MFGGrid2DSolution:
     m_iterates: List[np.ndarray] = field(default_factory=list)
     n_iterations: int = 0
     converged: bool = False
+    fixed_point_residual: float = float("inf")
 
 
 def _validate_problem(problem: MFGProblem2D) -> None:
@@ -273,7 +279,7 @@ def solve_mfg_2d(
         raise ValueError(
             f"n_iterations_max must be >= 1, got {n_iterations_max}"
         )
-    if tol <= 0.0:
+    if not np.isfinite(tol) or tol <= 0.0:
         raise ValueError(f"tol must be positive, got {tol}")
     if damping_burn_in < 0:
         raise ValueError(
@@ -294,6 +300,8 @@ def solve_mfg_2d(
                 f"m_initial_iterate must have shape "
                 f"({n_t + 1}, {n_x}, {n_y}), got {arr.shape}"
             )
+        if not np.isfinite(arr).all() or (arr < 0).any():
+            raise ValueError("m_initial_iterate must be finite and non-negative")
         m_curr = arr.copy()
 
     m_iterates: List[np.ndarray] = [m_curr.copy()]
@@ -305,24 +313,7 @@ def solve_mfg_2d(
     last_u = None
     last_drift = None
 
-    iterator = progress_iter(
-        range(n_iterations_max),
-        total=n_iterations_max,
-        description=f"solve_mfg_2d ({method})",
-        enabled=progress,
-    )
-    for k in iterator:
-        if method == "picard":
-            m_input = m_curr
-        else:  # fictitious_play
-            if k < damping_burn_in:
-                m_input = m_curr
-            else:
-                if sum_post_burnin is None:
-                    sum_post_burnin = m_curr.copy()
-                    count_post_burnin = 1
-                m_input = sum_post_burnin / count_post_burnin
-
+    def best_response(m_input, k):
         terminal_arr = np.asarray(
             problem.terminal_cost(X, Y, m_input[-1]), dtype=np.float64,
         )
@@ -369,7 +360,31 @@ def solve_mfg_2d(
             ) from exc
         m_next = fp_sol.m
 
-        diff = float(np.max(np.abs(m_next - m_curr)))
+        return m_next, last_u, last_drift
+
+    residual = float("inf")
+
+    iterator = progress_iter(
+        range(n_iterations_max),
+        total=n_iterations_max,
+        description=f"solve_mfg_2d ({method})",
+        enabled=progress,
+    )
+    for k in iterator:
+        if method == "picard":
+            m_input = m_curr
+        else:  # fictitious_play
+            if k < damping_burn_in:
+                m_input = m_curr
+            else:
+                if sum_post_burnin is None:
+                    sum_post_burnin = m_curr.copy()
+                    count_post_burnin = 1
+                m_input = sum_post_burnin / count_post_burnin
+
+        m_next, _, _ = best_response(m_input, k)
+        check, last_u, last_drift = best_response(m_next, k)
+        residual = float(np.max(np.abs(check - m_next)))
         m_iterates.append(m_next.copy())
 
         if method == "fictitious_play" and k >= damping_burn_in:
@@ -378,7 +393,7 @@ def solve_mfg_2d(
             count_post_burnin += 1
 
         m_curr = m_next
-        if diff < tol:
+        if residual < tol:
             converged = True
             break
 
@@ -395,4 +410,5 @@ def solve_mfg_2d(
         m_iterates=m_iterates,
         n_iterations=n_iterations,
         converged=converged,
+        fixed_point_residual=residual,
     )

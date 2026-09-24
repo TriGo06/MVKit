@@ -26,13 +26,17 @@ fn fill_constant_diffusion(values: &[f64], mut out: ArrayViewMut2<f64>) {
 /// where `mean(X) = (1/N) sum_j X_j` is the empirical mean of the population.
 ///
 /// If the initial law is Gaussian `X_0 ~ N(m_0, v_0)`, the marginal law stays
-/// Gaussian for all `t`, with mean and variance solving the closed-form ODEs
+/// Gaussian for all `t`. The mean and McKean-Vlasov limit variance solve
 /// ```text
 /// dm/dt = (a + b) m,            m(t) = m_0 exp((a + b) t)
 /// dv/dt = 2 a v + sigma^2,      v(t) = v_0 exp(2 a t)
 ///                                       + sigma^2 (exp(2 a t) - 1) / (2 a)
 /// ```
 /// (with the obvious `v(t) = v_0 + sigma^2 t` limit when `a = 0`).
+///
+/// For finite N and i.i.d. initial states, let v_c be the variance formula
+/// with a replaced by c. The marginal variance is (1-1/N) v_a + v_(a+b)/N,
+/// while the expected empirical population variance is (1-1/N) v_a.
 ///
 /// The closed-form moments make this model a quantitative benchmark for any
 /// mean-field integrator: empirical moments at time `T` can be compared
@@ -57,6 +61,10 @@ impl LinearQuadratic {
 }
 
 impl MeanFieldSDE for LinearQuadratic {
+    fn supports_milstein(&self) -> bool {
+        true
+    }
+
     fn dim(&self) -> usize {
         1
     }
@@ -124,6 +132,10 @@ impl CuckerSmale {
 }
 
 impl MeanFieldSDE for CuckerSmale {
+    fn supports_milstein(&self) -> bool {
+        true
+    }
+
     fn dim(&self) -> usize {
         2 * self.spatial_dim
     }
@@ -239,6 +251,10 @@ impl Kuramoto {
 }
 
 impl MeanFieldSDE for Kuramoto {
+    fn supports_milstein(&self) -> bool {
+        true
+    }
+
     fn dim(&self) -> usize {
         1
     }
@@ -327,6 +343,10 @@ impl MeanFieldCIR {
 }
 
 impl MeanFieldSDE for MeanFieldCIR {
+    fn supports_milstein(&self) -> bool {
+        true
+    }
+
     fn dim(&self) -> usize {
         1
     }

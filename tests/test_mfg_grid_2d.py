@@ -108,7 +108,7 @@ def test_solve_mfg_2d_recovers_isotropic_lq_covariance():
 
     a, b = -5.0, 5.0
     n_xy = 64
-    n_t = 50
+    n_t = 100
     dx = (b - a) / n_xy
     x_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
     y_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
@@ -184,7 +184,7 @@ def test_solve_mfg_2d_first_order_convergence_on_lq():
     a, b = -5.0, 5.0
 
     errs, dxs = [], []
-    for n_xy, n_t in [(48, 25), (64, 50), (96, 75), (128, 100)]:
+    for n_xy, n_t in [(48, 50), (64, 100), (96, 150), (128, 200)]:
         dx = (b - a) / n_xy
         x_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
         y_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
@@ -246,7 +246,7 @@ def test_solve_mfg_2d_recovers_anisotropic_lq_covariance():
 
     a, b = -5.0, 5.0
     n_xy = 64
-    n_t = 50
+    n_t = 100
     dx = (b - a) / n_xy
     x_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)
     y_v = np.linspace(a + dx / 2.0, b - dx / 2.0, n_xy)

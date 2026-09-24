@@ -284,6 +284,9 @@ def solve_hjb(
             f"terminal must have shape ({n_x},), got {terminal_arr.shape}"
         )
 
+    if not np.isfinite(terminal_arr).all():
+        raise ValueError("terminal must be finite")
+
     n_t_int = int(n_t)
     dt = float(T) / n_t_int
     t_grid = np.linspace(0.0, float(T), n_t_int + 1)
@@ -302,22 +305,14 @@ def solve_hjb(
         u_n = u[n]
         d_minus, d_plus = _spatial_diffs(u_n, dx, boundary)
 
-        # Explicit-Hamiltonian CFL: dt * max|H'(partial_x u)| / dx <= 1
-        # is the EO stability condition, with H'(p) the characteristic
-        # speed (for H(p) = p^2/2 it is just max|partial_x u|).
-        # Implicit diffusion buys some headroom in practice, so a strict
-        # > 1 check produces false positives on otherwise-fine LQ-like
-        # problems whose worst step sits just above 1; we raise above
-        # 2.0, which still catches genuine instabilities (which run
-        # well past 5 within a few steps) while leaving nominal cases
-        # alone.
-        _CFL_HARD_LIMIT = 2.0
-        max_speed = float(
-            max(
-                np.max(np.abs(ham.dH(d_minus))),
-                np.max(np.abs(ham.dH(d_plus))),
-            )
+        # Both EO branches contribute at a local maximum. Their sum,
+        # not their maximum, controls the explicit step's monotonicity.
+        _CFL_HARD_LIMIT = 1.0
+        outgoing_speed = (
+            ham.dH(np.maximum(d_minus, 0.0))
+            - ham.dH(np.minimum(d_plus, 0.0))
         )
+        max_speed = float(np.max(outgoing_speed))
         cfl = max_speed * dt / dx
         if cfl > _CFL_HARD_LIMIT or not np.isfinite(cfl):
             step_idx = n_t_int - n + 1
@@ -329,7 +324,7 @@ def solve_hjb(
             raise ValueError(
                 f"HJB explicit-Hamiltonian CFL violated at step "
                 f"{step_idx}/{n_t_int} (t = {float(t_grid[n]):.4f}): "
-                f"max|H'(partial_x u)| ~ {max_speed:.3e}, dt = {dt:.3e}, "
+                f"max EO outgoing speed ~ {max_speed:.3e}, dt = {dt:.3e}, "
                 f"dx = {dx:.3e}, giving CFL = {cfl:.3e} (hard limit "
                 f"{_CFL_HARD_LIMIT}). "
                 f"Try n_t >= {recommended_n_t}, or widen the spatial "

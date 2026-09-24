@@ -18,14 +18,14 @@ discretizes time at :math:`n_t + 1` grid points and iterates:
 - FP step: solve the forward Fokker-Planck with that control as drift
   to obtain the next density iterate.
 - Convergence test: stop when
-  :math:`\\max_{t,x}|m^{(k+1)} - m^{(k)}| < \\mathrm{tol}`.
+  :math:`\\max_{t,x}|\\mathrm{BR}(m^{(k+1)}) - m^{(k+1)}| < \\mathrm{tol}`.
 
-The Lasry-Lions monotonicity condition makes the coupled system a
-contraction in a suitable metric; on monotone problems Picard
-converges geometrically. Fictitious Play (Cardaliaguet and Hadikhanloo,
-2017) trades the contraction requirement for an :math:`O(1/k)` rate
-under monotonicity alone, and is the safety net when Picard fails to
-contract.
+Lasry-Lions monotonicity is a uniqueness condition under the usual MFG
+hypotheses; it does not imply that the best-response map is a contraction.
+Picard converges geometrically when that additional property holds.
+Fictitious Play convergence results require further structure, such as
+the potential-game and regularity assumptions of Cardaliaguet and
+Hadikhanloo (2017). There is no universal O(1/k) sup-norm iterate guarantee.
 
 Validation against the LQ-MFG closed form (the symmetric scalar case
 solved analytically by ``mvkit.mfg.solve_lq_mfg`` via the Riccati ODE)
@@ -62,7 +62,7 @@ _VALID_METHODS = ("picard", "fictitious_play")
 
 @dataclass
 class MFGProblem:
-    """A 1D scalar Mean Field Game on a periodic domain.
+    """A 1D scalar Mean Field Game with periodic or Neumann boundaries.
 
     Attributes
     ----------
@@ -95,7 +95,7 @@ class MFGProblem:
         :class:`~mvkit.mfg.Hamiltonian` (see
         :func:`~mvkit.mfg.power_hamiltonian`).
     boundary : str, default "periodic"
-        Boundary condition. Currently only ``"periodic"`` is supported.
+        Boundary condition: ``"periodic"`` or zero-flux ``"neumann"``.
     """
 
     sigma: float
@@ -118,7 +118,7 @@ class MFGGridSolution:
     t_grid : ndarray, shape (n_t + 1,)
         Increasing time grid from 0 to T.
     x_grid : ndarray, shape (n_x,)
-        Periodic spatial grid (does not include the right endpoint).
+        Periodic grid without the right endpoint, or Neumann cell centers.
     u : ndarray, shape (n_t + 1, n_x)
         Value function. ``u[-1]`` is the terminal cost evaluated on the
         grid against the converged ``m[-1]``; ``u[0]`` is the value at
@@ -135,7 +135,11 @@ class MFGGridSolution:
     n_iterations : int
         Number of outer updates performed.
     converged : bool
-        True if the sup-norm tolerance was met before the iteration cap.
+        True if ``fixed_point_residual < tol``.
+    fixed_point_residual : float
+        Sup norm of ``BR(m) - m``. The returned ``u`` and drift solve the
+        HJB against the returned ``m``; their forward density agrees
+        with ``m`` to this residual.
     """
 
     t_grid: np.ndarray
@@ -146,6 +150,7 @@ class MFGGridSolution:
     m_iterates: List[np.ndarray] = field(default_factory=list)
     n_iterations: int = 0
     converged: bool = False
+    fixed_point_residual: float = float("inf")
 
 
 def _validate_problem(problem: MFGProblem) -> None:
@@ -173,8 +178,9 @@ def _build_grid(problem: MFGProblem) -> Tuple[np.ndarray, float, float]:
     a, b = problem.domain
     L = float(b - a)
     n_x = int(problem.n_x)
-    x_grid = np.linspace(a, b, n_x, endpoint=False)
     dx = L / n_x
+    offset = 0.5 if problem.boundary == "neumann" else 0.0
+    x_grid = a + (np.arange(n_x) + offset) * dx
     return x_grid, dx, L
 
 
@@ -251,7 +257,7 @@ def solve_mfg(
     Discretize the user-supplied problem on its spatial grid (size
     ``problem.n_x``) and on a uniform time grid of size ``n_t + 1``,
     then iterate Picard or Fictitious Play between the HJB and FP
-    solvers until consecutive density iterates differ by less than
+    solvers until the returned density has a fixed-point residual below
     ``tol`` in sup norm.
 
     The fixed-point structure:
@@ -276,7 +282,7 @@ def solve_mfg(
     n_iterations_max : int, default 50
         Cap on outer-iteration updates.
     tol : float, default 1e-4
-        Sup-norm tolerance on consecutive density iterates.
+        Sup-norm tolerance on ``BR(m) - m`` at the returned density.
     damping_burn_in : int, default 0
         Only used when ``method="fictitious_play"``. Run this many
         leading Picard steps before starting to accumulate the
@@ -316,7 +322,7 @@ def solve_mfg(
         raise ValueError(
             f"n_iterations_max must be >= 1, got {n_iterations_max}"
         )
-    if tol <= 0.0:
+    if not np.isfinite(tol) or tol <= 0.0:
         raise ValueError(f"tol must be positive, got {tol}")
     if damping_burn_in < 0:
         raise ValueError(
@@ -336,6 +342,8 @@ def solve_mfg(
                 f"m_initial_iterate must have shape ({n_t + 1}, {problem.n_x}), "
                 f"got {arr.shape}"
             )
+        if not np.isfinite(arr).all() or (arr < 0).any():
+            raise ValueError("m_initial_iterate must be finite and non-negative")
         m_curr = arr.copy()
 
     m_iterates: List[np.ndarray] = [m_curr.copy()]
@@ -347,26 +355,7 @@ def solve_mfg(
     last_u = None
     last_drift = None
 
-    iterator = progress_iter(
-        range(n_iterations_max),
-        total=n_iterations_max,
-        description=f"solve_mfg ({method})",
-        enabled=progress,
-    )
-    for k in iterator:
-        # Pick the input flow for this iteration's HJB.
-        if method == "picard":
-            m_input = m_curr
-        else:  # fictitious_play
-            if k < damping_burn_in:
-                m_input = m_curr
-            else:
-                if sum_post_burnin is None:
-                    sum_post_burnin = m_curr.copy()
-                    count_post_burnin = 1
-                m_input = sum_post_burnin / count_post_burnin
-
-        # Backward HJB given the input flow.
+    def best_response(m_input, k):
         terminal_arr = np.asarray(
             problem.terminal_cost(x_grid, m_input[-1]), dtype=np.float64
         )
@@ -412,7 +401,33 @@ def solve_mfg(
             ) from exc
         m_next = fp_sol.m
 
-        diff = float(np.max(np.abs(m_next - m_curr)))
+        return m_next, last_u, last_drift
+
+    residual = float("inf")
+
+    iterator = progress_iter(
+        range(n_iterations_max),
+        total=n_iterations_max,
+        description=f"solve_mfg ({method})",
+        enabled=progress,
+    )
+    for k in iterator:
+        # Pick the input flow for this iteration's HJB.
+        if method == "picard":
+            m_input = m_curr
+        else:  # fictitious_play
+            if k < damping_burn_in:
+                m_input = m_curr
+            else:
+                if sum_post_burnin is None:
+                    sum_post_burnin = m_curr.copy()
+                    count_post_burnin = 1
+                m_input = sum_post_burnin / count_post_burnin
+
+        # Backward HJB given the input flow.
+        m_next, _, _ = best_response(m_input, k)
+        check, last_u, last_drift = best_response(m_next, k)
+        residual = float(np.max(np.abs(check - m_next)))
         m_iterates.append(m_next.copy())
 
         if method == "fictitious_play" and k >= damping_burn_in:
@@ -421,7 +436,7 @@ def solve_mfg(
             count_post_burnin += 1
 
         m_curr = m_next
-        if diff < tol:
+        if residual < tol:
             converged = True
             break
 
@@ -437,4 +452,5 @@ def solve_mfg(
         m_iterates=m_iterates,
         n_iterations=n_iterations,
         converged=converged,
+        fixed_point_residual=residual,
     )

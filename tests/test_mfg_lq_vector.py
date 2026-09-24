@@ -204,14 +204,12 @@ def test_d_equal_2_fictitious_play_agrees_with_picard():
     )
     sol_p = solve_lq_mfg_vector(**kwargs)
     sol_fp = solve_lq_mfg_vector(
-        **kwargs, method="fictitious_play", n_iterations_max=80,
+        **kwargs, method="fictitious_play", n_iterations_max=500, damping_burn_in=5,
     )
     assert sol_p.converged and sol_fp.converged
-    # Picard contracts geometrically and stops in ~7 steps; FP has
-    # the slower O(1/k) rate and stops at ~40. The two converged means
-    # therefore disagree by ~ 5e-4 in our environment, which is well
-    # below the MC noise floor (5/sqrt(N) ~ 0.07) but above what a
-    # strict byte-equal check would allow.
+    assert sol_p.fixed_point_residual < 1e-5
+    assert sol_fp.fixed_point_residual < 1e-5
+    # Both methods must satisfy the same fixed-point equation.
     assert np.max(np.abs(sol_p.m - sol_fp.m)) < 1e-3
 
 

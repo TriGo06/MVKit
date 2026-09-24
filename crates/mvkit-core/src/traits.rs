@@ -32,11 +32,24 @@ pub trait MeanFieldSDE: Sync {
     /// this simply fills `out` with the per-coordinate constants.
     fn diffusion(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>);
 
+    /// Opt in to the coordinatewise Milstein implementation.
+    ///
+    /// For distinct particle-coordinate pairs a and b, the model must
+    /// satisfy sigma_b * partial_b sigma_a = 0. Dependence on other noisy
+    /// coordinates or on the empirical measure can violate this condition,
+    /// even when the diffusion matrix is diagonal. The self-derivative
+    /// returned by `diffusion_derivative` must also be correct. Constant
+    /// diffusion and coefficients depending only on their own coordinate
+    /// satisfy the structural condition. Defaults to false for custom models.
+    fn supports_milstein(&self) -> bool {
+        false
+    }
+
     /// Compute the diagonal of the diffusion Jacobian:
     /// `out[i, k] = d sigma^k / d X_i^k`. Needed by Milstein-type
-    /// schemes. Default returns zeros, which means Milstein collapses to
-    /// Euler-Maruyama on the implementing model. Models with non-trivial
-    /// state-dependent diffusion should override this.
+    /// schemes. Default returns zeros, suitable for constant diffusion.
+    /// State-dependent models must provide the actual derivative before
+    /// opting in via `supports_milstein`.
     fn diffusion_derivative(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
         let _ = state;
         out.fill(0.0);

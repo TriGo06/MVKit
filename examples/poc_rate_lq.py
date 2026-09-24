@@ -10,9 +10,9 @@ Usage:
     pip install matplotlib scipy
     python examples/poc_rate_lq.py
 
-The Fournier-Guillin (2015) theorem predicts ``W_2(emp_N, mu) = O(N^{-1/2})``
-in dimension 1 for laws with sufficient moments; the LQ marginal at time
-T is Gaussian, so the assumption is clearly met.
+The -1/2 guide is an empirical Gaussian benchmark on this N range.
+The general Fournier-Guillin moment theorem bounds E[W2**2] at that
+order, not E[W2]. Other laws and interacting models can have slower rates.
 """
 
 from __future__ import annotations

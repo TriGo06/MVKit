@@ -38,7 +38,7 @@ Roadmap (non-binding) for v0.2 and beyond: tamed schemes for super-linear drift,
 
 ```bash
 git clone https://github.com/TriGo06/MVKit
-cd mvkit
+cd MVKit
 pip install maturin
 maturin develop --release
 ```
@@ -84,7 +84,7 @@ $$
 \mathrm{d}X_i = (a\, X_i + b\, \bar X)\,\mathrm{d}t + \sigma\,\mathrm{d}W_i,
 $$
 
-where $\bar X = (1/N)\sum_j X_j$. If the initial law is Gaussian, the marginal law stays Gaussian for all $t$, with mean $m(t) = m_0 \exp((a+b) t)$ and variance $v(t) = v_0 \exp(2at) + \sigma^2 (\exp(2at) - 1)/(2a)$. These closed-form moments make the model a clean benchmark for the weak order of any integrator; the test suite fits the log-log slope of $|E[\bar X^h_T] - m(T)|$ and the analogous variance error against $\mathrm{d}t$, and asserts a slope of 1 (Talay and Tubaro, 1990).
+where $\bar X = (1/N)\sum_j X_j$. For i.i.d. Gaussian initial states, the mean is $m(t)=m_0\exp((a+b)t)$. Define $v_c(t)=v_0\exp(2ct)+\sigma^2(\exp(2ct)-1)/(2c)$, with $v_0+\sigma^2t$ when $c=0$. The McKean-Vlasov limit variance is $v_a(t)$. At finite $N$, the marginal particle variance is $(1-1/N)v_a(t)+v_{a+b}(t)/N$, while the expected empirical population variance is $(1-1/N)v_a(t)$. These distinctions matter when benchmarking discretization errors at finite particle counts.
 
 ## Math summary: Cucker-Smale
 
@@ -133,15 +133,17 @@ The truncation $\max(X_i, 0)$ keeps the diffusion real if a discretization step 
 
 In the limit $b \to 0$, each particle is an independent classical CIR process and the marginal mean satisfies the closed form $\mathbb{E}[X_t] = \theta + (X_0 - \theta) e^{-\kappa t}$, used in the test suite as a smoke check of both schemes.
 
-A note on Milstein's improvement. Milstein has strong order 1 (vs Euler's strong order 1/2), but on weak error of smooth functionals of $X_T$ both schemes are order 1; the constants of the leading $O(\mathrm{d}t)$ terms can go either way depending on the functional, and on CIR the Milstein-only contribution to $E[X_{n+1}^2 \mid X_n]$ is $+\tfrac{1}{8}\sigma^4\,\mathrm{d}t^2$, i.e. very slightly worse on the second moment by an $O(\mathrm{d}t^2)$ amount. The strong-order-1 improvement only shows up on pathwise error or non-smooth functionals (barrier hits, trajectory maxima). A clean strong-error test on CIR requires sharing Brownian increments between coarse-dt and fine-dt runs, which we have deferred.
+A note on Milstein's improvement. For compatible diffusion and sufficiently regular coefficients, Milstein has strong order 1 (vs Euler's strong order 1/2), but on weak error of smooth functionals of $X_T$ both schemes are order 1; the constants of the leading $O(\mathrm{d}t)$ terms can go either way depending on the functional, and on CIR the Milstein-only contribution to $E[X_{n+1}^2 \mid X_n]$ is $+\tfrac{1}{8}\sigma^4\,\mathrm{d}t^2$, i.e. very slightly worse on the second moment by an $O(\mathrm{d}t^2)$ amount. The strong-order-1 improvement only shows up on pathwise error or non-smooth functionals (barrier hits, trajectory maxima). CIR has a non-Lipschitz square-root coefficient, so its rate also depends on parameters and boundary behavior; the shared-increment tests below check selected regimes.
 
 References: Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). *A theory of the term structure of interest rates*. Econometrica 53, 385-407. McKean-Vlasov extensions are standard, see Carmona and Delarue (2018).
 
+The Rust coordinatewise Milstein implementation requires `MeanFieldSDE::supports_milstein()` to opt in. This certifies a correct self-derivative and vanishing cross-noise derivatives across coordinates and particles. A diagonal diffusion matrix alone is insufficient; cross iterated stochastic integrals are not implemented. All four built-in models satisfy the structural condition.
+
 ## Propagation of chaos
 
-For a McKean-Vlasov SDE with i.i.d. initial conditions, Sznitman's classical result (1991) says the empirical measure $\mu_N$ of the $N$-particle system converges in distribution to the McKean-Vlasov limit law $\mu$ as $N \to \infty$. Fournier and Guillin (2015) sharpened this to a quantitative rate: in dimension 1, for laws with finite $(4 + \varepsilon)$-th moment, $\mathbb{E}[W_2(\mu_N, \mu)] = O(N^{-1/2})$, where $W_2$ is the 2-Wasserstein distance.
+Propagation of chaos connects an interacting particle system to its McKean-Vlasov limit under suitable assumptions on the dynamics. For **independent** 1D samples with a finite $(4+\varepsilon)$-th moment, Fournier and Guillin (2015) give $\mathbb{E}[W_2^2(\mu_N,\mu)]=O(N^{-1/2})$. Jensen's inequality yields the general bound $\mathbb{E}[W_2(\mu_N,\mu)]=O(N^{-1/4})$. A $-1/2$ slope for $W_2$ is not universal: Bernoulli samples have order $N^{-1/4}$. Interacting particles also require a model-specific coupling estimate.
 
-`mvkit.poc` provides a small utility that takes any 1D mean-field simulator wrapped as `(n_particles, seed) -> 1D array of terminal-time states`, sweeps `N`, computes the exact 1D Wasserstein-2 distance to a reference inverse CDF on each run, and fits the log-log slope of the median against $\log N$. The slope should land near $-1/2$:
+`mvkit.poc` sweeps particle counts and fits the log-log slope of median W2 errors. Distances between two empirical measures use exact step-quantile integration, including unequal sample counts. Distances to a reference inverse CDF use adaptive quadrature with error tolerances on W2 squared. A slope near $-1/2$ is an empirical benchmark for the Gaussian example below, not a consequence of the general moment bound.
 
 ```python
 import numpy as np
@@ -172,7 +174,7 @@ print(result.fitted_slope)  # should be ~ -0.5
 
 See `examples/poc_rate_lq.py` for a runnable two-panel figure showing the log-log fit and the empirical-vs-analytical CDF overlay at the largest $N$.
 
-Scope. Currently 1D only (LinearQuadratic, Kuramoto via the order parameter, MeanFieldCIR). Cucker-Smale state is 4D, which requires sliced or projected Wasserstein and is on the v0.2 roadmap.
+Scope. Real-valued 1D samples only (for example LinearQuadratic and MeanFieldCIR). Phase angles require a separate circular-distance treatment. Cucker-Smale state is 4D, which requires sliced or projected Wasserstein and is on the v0.2 roadmap.
 
 ## Strong-error tests via shared Brownian paths
 
@@ -217,7 +219,7 @@ A Mean Field Game (Lasry and Lions, 2007) is a Cournot-Nash equilibrium for a co
 `mvkit.mfg` is a new sub-module dedicated to numerical MFG. The first release ships the scalar linear-quadratic case, where the HJB ansatz $u(t, x) = \tfrac{1}{2} P(t) x^2 + Q(t) x + R(t)$ reduces the problem to scalar ODEs (Riccati for $P$, linear ODE for the variance), so the equilibrium is known in closed form. Two iterative solvers share a common best-response operator and can be selected via the `method` keyword:
 
 - `method="picard"` (default): $m^{(k+1)} = \mathrm{BR}(m^{(k)})$. Geometric convergence when the BR map is a contraction (LQ-MFG with moderate $\int_0^T P$). Typically 5 to 10 iterations to $10^{-4}$.
-- `method="fictitious_play"` (also exposed as `solve_lq_mfg_fictitious_play`): $m^{(k+1)} = \mathrm{BR}(\bar m^{(k)})$ where $\bar m^{(k)}$ is the historical average of past iterates. Cardaliaguet and Hadikhanloo (2017) prove $O(1/k)$ convergence under MFG monotonicity, without requiring strict contraction. Slower than Picard on LQ ($\sim$ 30 to 50 iterations) but the natural choice once monotonicity is the only structure available.
+- `method="fictitious_play"` (also exposed as `solve_lq_mfg_fictitious_play`): $m^{(k+1)}=\mathrm{BR}(\bar m^{(k)})$, where $\bar m^{(k)}$ is the historical average. It can be much slower than Picard. Cardaliaguet and Hadikhanloo (2017) prove convergence for potential MFGs under additional regularity assumptions; this is not an unconditional $O(1/k)$ sup-norm error bound. Lasry-Lions monotonicity alone does not make the best-response map contractive.
 
 A `damping_burn_in` parameter on the FP solver runs leading Picard steps before starting to accumulate the historical average, which speeds up the tail when the initial guess is far from the equilibrium.
 
@@ -246,6 +248,10 @@ print("max |m - m_0|:", np.max(np.abs(sol.m - 1.5)))   # equilibrium mean is con
 V_T_emp = sol.x_trajectory[-1].var()
 print(f"V(T) empirical = {V_T_emp:.4f}, analytical = {sol.V[-1]:.4f}")
 ```
+
+For an arbitrary input mean, the affine HJB coefficient must be solved backward: $s'=Ps+qm$, $s(T)=-q_Tm(T)$, and $\alpha^*=-Px-s$. In the vector case, $s'=PR^{-1}s+Qm$ and $\alpha^*=-R^{-1}(Px+s)$. The shortcut $s=-Pm$ only applies to constant input means.
+
+All four MFG solvers report `fixed_point_residual = ||BR(m)-m||_inf` for the returned mean or density. `converged` is true only when this residual is below `tol`. Small changes between successive averaged responses are insufficient. Grid solutions evaluate the returned value function and control against the returned density. The explicit HJB and transport steps enforce CFL bounds of one; increase `n_t` if the guard rejects a step. Neumann grids use cell centers.
 
 The closed-form construction follows Carmona and Delarue (2018), *Probabilistic Theory of Mean Field Games with Applications I*, Section 3.5. The Fictitious Play scheme follows Cardaliaguet and Hadikhanloo (2017). See `examples/mfg_lq_demo.py` for a three-panel figure ($P(t)$, analytical-vs-empirical variance, particle trajectories with the equilibrium mean overlaid) and `examples/mfg_lq_picard_vs_fp.py` for a side-by-side log-y convergence trace of both methods.
 

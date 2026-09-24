@@ -91,13 +91,13 @@ def test_solve_mfg_returns_solution_dataclass():
         q=1.0, q_T=0.5, sigma=0.5, T=1.0,
         mu_0_mean=0.0, mu_0_var=1.0, n_x=64,
     )
-    sol = solve_mfg(problem, n_t=20, method="picard", tol=1e-4)
+    sol = solve_mfg(problem, n_t=40, method="picard", tol=1e-4)
     assert isinstance(sol, MFGGridSolution)
-    assert sol.t_grid.shape == (21,)
+    assert sol.t_grid.shape == (41,)
     assert sol.x_grid.shape == (64,)
-    assert sol.u.shape == (21, 64)
-    assert sol.m.shape == (21, 64)
-    assert sol.optimal_drift.shape == (21, 64)
+    assert sol.u.shape == (41, 64)
+    assert sol.m.shape == (41, 64)
+    assert sol.optimal_drift.shape == (41, 64)
     assert sol.t_grid[0] == 0.0
     assert sol.t_grid[-1] == pytest.approx(1.0)
     assert len(sol.m_iterates) == sol.n_iterations + 1
@@ -198,7 +198,7 @@ def test_solve_mfg_recovers_lq_mean_and_variance():
         q=q, q_T=q_T, sigma=sigma, T=T,
         mu_0_mean=mu_0_mean, mu_0_var=mu_0_var, n_x=256,
     )
-    sol = solve_mfg(problem, n_t=100, method="picard", tol=1e-6)
+    sol = solve_mfg(problem, n_t=200, method="picard", tol=1e-6)
     assert sol.converged
 
     a, b = problem.domain
@@ -253,7 +253,7 @@ def test_solve_mfg_first_order_convergence_on_lq():
 
     errs = []
     dxs = []
-    for n_x, n_t in [(128, 50), (256, 100), (512, 200), (1024, 400)]:
+    for n_x, n_t in [(128, 100), (256, 200), (512, 400), (1024, 800)]:
         problem = _build_lq_problem(
             q=q, q_T=q_T, sigma=sigma, T=T,
             mu_0_mean=mu_0_mean, mu_0_var=mu_0_var, n_x=n_x,
@@ -313,7 +313,7 @@ def test_picard_converges_in_few_iterations_on_lq():
         q=1.0, q_T=0.5, sigma=0.5, T=1.0,
         mu_0_mean=0.0, mu_0_var=1.0, n_x=128,
     )
-    sol = solve_mfg(problem, n_t=100, method="picard", tol=1e-6)
+    sol = solve_mfg(problem, n_t=200, method="picard", tol=1e-6)
     assert sol.converged
     assert sol.n_iterations <= 5
 
@@ -336,7 +336,7 @@ def test_solve_mfg_recovers_asymmetric_lq_on_neumann():
 
     a, b = -6.0, 6.0
     n_x = 256
-    n_t = 100
+    n_t = 200
     dx = (b - a) / n_x
     x_full = np.linspace(a + dx / 2.0, b - dx / 2.0, n_x)
 
@@ -410,7 +410,7 @@ def test_solve_mfg_neumann_first_order_convergence_on_asymmetric_lq():
         )
 
     errs, dxs = [], []
-    for n_x, n_t in [(128, 50), (256, 100), (512, 200)]:
+    for n_x, n_t in [(128, 100), (256, 200), (512, 400)]:
         dx = (b - a) / n_x
         x_full = np.linspace(a + dx / 2.0, b - dx / 2.0, n_x)
 
