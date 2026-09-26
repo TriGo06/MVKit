@@ -6,6 +6,9 @@ Euler-Maruyama method**, using identical precomputed normal increments and
 float64 states. It is the first stage of the
 [performance roadmap](../docs/performance-roadmap.md).
 
+The [initial CPU study](results/2026-09-26-findings.md) includes the raw
+measurements, observed performance gaps and next profiling priorities.
+
 ## Problems
 
 All cases use T=1, a=-0.5, b=0.3, sigma=0.25 and, for Cucker-Smale, beta=0.4.
