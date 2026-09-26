@@ -36,6 +36,12 @@ Accept optimizations against representative cases, including small problems
 where scheduling overhead matters. Track regressions as well as improvements.
 Keep CPU and GPU measurements separate and account for data transfers.
 
+The [first engine optimization](../benchmarks/results/2026-09-26-kernel-optimization/README.md)
+reduces coordinate-update overhead, redundant constant-diffusion work and
+exact pairwise kernel costs. The published study includes small problems,
+one/four CPU budgets and checks of trajectory compatibility. Reusable owned
+inputs for Python and compiled custom-model kernels remain measured targets.
+
 ## 3. Expose interaction structure and custom models
 
 Design a model interface that distinguishes moment interactions, all-pairs

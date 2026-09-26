@@ -8,6 +8,8 @@ float64 states. It is the first stage of the
 
 The [initial CPU study](results/2026-09-26-findings.md) includes the raw
 measurements, observed performance gaps and next profiling priorities.
+The [first kernel optimization](results/2026-09-26-kernel-optimization/README.md)
+records matched before/after timings and cross-revision trajectory checks.
 
 ## Problems
 

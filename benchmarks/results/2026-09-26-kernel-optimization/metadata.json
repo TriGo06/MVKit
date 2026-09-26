@@ -1,0 +1,609 @@
+{
+  "schema_version": 1,
+  "protocol": "Fixed-grid Euler, float64, shared precomputed standard normals, initial and final output",
+  "runs": {
+    "baseline": {
+      "pilot": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:06:46Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "pilot",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments",
+            "pairwise",
+            "multiplicative"
+          ],
+          "steps": [
+            64,
+            128
+          ],
+          "particles": null,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "7daf9f4aef62ab45783ad2edba7a2650bc5093e1",
+          "working_tree_dirty": false,
+          "source_sha256": "ef867d98e42be781755add0c263c65b67f0d2ef26d3c0f5901fd7067c591f2f4",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "numpy==2.5.3",
+            "psutil==7.2.2",
+            "scipy==1.18.1"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      },
+      "large": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:07:13Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "pilot",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments"
+          ],
+          "steps": [
+            128
+          ],
+          "particles": 65536,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "7daf9f4aef62ab45783ad2edba7a2650bc5093e1",
+          "working_tree_dirty": false,
+          "source_sha256": "ef867d98e42be781755add0c263c65b67f0d2ef26d3c0f5901fd7067c591f2f4",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "numpy==2.5.3",
+            "psutil==7.2.2",
+            "scipy==1.18.1"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      },
+      "small": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:07:25Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "smoke",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments",
+            "pairwise",
+            "multiplicative"
+          ],
+          "steps": [
+            8,
+            16
+          ],
+          "particles": null,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "7daf9f4aef62ab45783ad2edba7a2650bc5093e1",
+          "working_tree_dirty": false,
+          "source_sha256": "ef867d98e42be781755add0c263c65b67f0d2ef26d3c0f5901fd7067c591f2f4",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "numpy==2.5.3",
+            "psutil==7.2.2",
+            "scipy==1.18.1"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      },
+      "threshold": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:07:33Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "pilot",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments"
+          ],
+          "steps": [
+            32
+          ],
+          "particles": 262144,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "7daf9f4aef62ab45783ad2edba7a2650bc5093e1",
+          "working_tree_dirty": false,
+          "source_sha256": "ef867d98e42be781755add0c263c65b67f0d2ef26d3c0f5901fd7067c591f2f4",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "numpy==2.5.3",
+            "psutil==7.2.2",
+            "scipy==1.18.1"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      }
+    },
+    "optimized": {
+      "pilot": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:10:02Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "pilot",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments",
+            "pairwise",
+            "multiplicative"
+          ],
+          "steps": [
+            64,
+            128
+          ],
+          "particles": null,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "3b363e5ac3496ae2aed39e8e7fb58e7f2224440b",
+          "working_tree_dirty": false,
+          "source_sha256": "f2107e6d13f0f6eaadcb140c93e4822f24f0415ddc3c9e0592a8507b48aed831",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "Pygments==2.21.0",
+            "diffrax==0.7.2",
+            "equinox==0.13.8",
+            "iniconfig==2.3.0",
+            "jax==0.11.2",
+            "jaxlib==0.11.2",
+            "jaxtyping==0.3.11",
+            "lineax==0.1.1",
+            "llvmlite==0.49.0",
+            "maturin==1.15.0",
+            "ml_dtypes==0.6.0",
+            "mvkit==0.1.0",
+            "numba==0.67.0",
+            "numpy==2.5.3",
+            "opt_einsum==3.4.0",
+            "optimistix==0.1.0",
+            "packaging==26.3",
+            "pluggy==1.6.0",
+            "psutil==7.2.2",
+            "pytest==9.1.1",
+            "scipy==1.18.1",
+            "typing_extensions==4.16.0",
+            "wadler_lindig==0.1.7"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      },
+      "large": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:10:19Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "pilot",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments"
+          ],
+          "steps": [
+            128
+          ],
+          "particles": 65536,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "3b363e5ac3496ae2aed39e8e7fb58e7f2224440b",
+          "working_tree_dirty": false,
+          "source_sha256": "f2107e6d13f0f6eaadcb140c93e4822f24f0415ddc3c9e0592a8507b48aed831",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "Pygments==2.21.0",
+            "diffrax==0.7.2",
+            "equinox==0.13.8",
+            "iniconfig==2.3.0",
+            "jax==0.11.2",
+            "jaxlib==0.11.2",
+            "jaxtyping==0.3.11",
+            "lineax==0.1.1",
+            "llvmlite==0.49.0",
+            "maturin==1.15.0",
+            "ml_dtypes==0.6.0",
+            "mvkit==0.1.0",
+            "numba==0.67.0",
+            "numpy==2.5.3",
+            "opt_einsum==3.4.0",
+            "optimistix==0.1.0",
+            "packaging==26.3",
+            "pluggy==1.6.0",
+            "psutil==7.2.2",
+            "pytest==9.1.1",
+            "scipy==1.18.1",
+            "typing_extensions==4.16.0",
+            "wadler_lindig==0.1.7"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      },
+      "small": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:10:26Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "smoke",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments",
+            "pairwise",
+            "multiplicative"
+          ],
+          "steps": [
+            8,
+            16
+          ],
+          "particles": null,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "3b363e5ac3496ae2aed39e8e7fb58e7f2224440b",
+          "working_tree_dirty": false,
+          "source_sha256": "f2107e6d13f0f6eaadcb140c93e4822f24f0415ddc3c9e0592a8507b48aed831",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "Pygments==2.21.0",
+            "diffrax==0.7.2",
+            "equinox==0.13.8",
+            "iniconfig==2.3.0",
+            "jax==0.11.2",
+            "jaxlib==0.11.2",
+            "jaxtyping==0.3.11",
+            "lineax==0.1.1",
+            "llvmlite==0.49.0",
+            "maturin==1.15.0",
+            "ml_dtypes==0.6.0",
+            "mvkit==0.1.0",
+            "numba==0.67.0",
+            "numpy==2.5.3",
+            "opt_einsum==3.4.0",
+            "optimistix==0.1.0",
+            "packaging==26.3",
+            "pluggy==1.6.0",
+            "psutil==7.2.2",
+            "pytest==9.1.1",
+            "scipy==1.18.1",
+            "typing_extensions==4.16.0",
+            "wadler_lindig==0.1.7"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      },
+      "threshold": {
+        "schema_version": 1,
+        "created_utc": "2026-09-26T17:10:34Z",
+        "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+        "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+        "config": {
+          "profile": "pilot",
+          "backends": [
+            "mvkit-core",
+            "mvkit-python"
+          ],
+          "cases": [
+            "moments"
+          ],
+          "steps": [
+            32
+          ],
+          "particles": 262144,
+          "seeds": [
+            7,
+            19,
+            41
+          ],
+          "threads": [
+            1,
+            4
+          ],
+          "repeats": 7,
+          "reference_factor": 4,
+          "timeout": 600
+        },
+        "environment": {
+          "git_revision": "3b363e5ac3496ae2aed39e8e7fb58e7f2224440b",
+          "working_tree_dirty": false,
+          "source_sha256": "f2107e6d13f0f6eaadcb140c93e4822f24f0415ddc3c9e0592a8507b48aed831",
+          "python": "3.12.14",
+          "system": "Linux",
+          "machine": "x86_64",
+          "cpu": "AMD EPYC 9V74 80-Core Processor",
+          "logical_cpus": 9,
+          "physical_cpus": 9,
+          "available_affinity": [
+            0,
+            1,
+            2,
+            3,
+            4,
+            5,
+            6,
+            7,
+            8
+          ],
+          "cpu_quota": "800000 100000",
+          "memory_limit": "8589934592",
+          "packages": [
+            "Pygments==2.21.0",
+            "diffrax==0.7.2",
+            "equinox==0.13.8",
+            "iniconfig==2.3.0",
+            "jax==0.11.2",
+            "jaxlib==0.11.2",
+            "jaxtyping==0.3.11",
+            "lineax==0.1.1",
+            "llvmlite==0.49.0",
+            "maturin==1.15.0",
+            "ml_dtypes==0.6.0",
+            "mvkit==0.1.0",
+            "numba==0.67.0",
+            "numpy==2.5.3",
+            "opt_einsum==3.4.0",
+            "optimistix==0.1.0",
+            "packaging==26.3",
+            "pluggy==1.6.0",
+            "psutil==7.2.2",
+            "pytest==9.1.1",
+            "scipy==1.18.1",
+            "typing_extensions==4.16.0",
+            "wadler_lindig==0.1.7"
+          ],
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+        }
+      }
+    }
+  },
+  "artifacts": {
+    "baseline": {
+      "native_worker_sha256": "0a19a5526e13474be91c3b73af73f0320b6310d8eb1f843c70452533c0ff6e4e",
+      "python_extension_sha256": "971cae951d8a6665a8ffbfb7b68e48a0e702db47aa2dfd7ce9e8f7d6ac1ede63"
+    },
+    "optimized": {
+      "native_worker_sha256": "f894ce92c9106bc01ea91d2fc3220db475af0c1a08027cc865b50a9d85e876df",
+      "python_extension_sha256": "ec984c1e36f82f82439fc48ae1b5aef8672ec11d921a5329c6c06a07c64128af"
+    }
+  },
+  "rustflags": null
+}
