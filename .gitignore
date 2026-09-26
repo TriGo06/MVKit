@@ -1,6 +1,7 @@
 # Rust
 target/
 Cargo.lock
+!benchmarks/locks/Cargo.lock
 
 # Python
 __pycache__/
@@ -22,3 +23,6 @@ wheels/
 
 # maturin
 *.whl
+
+# Local benchmark outputs; selected published results are stored separately.
+benchmarks/local-results/

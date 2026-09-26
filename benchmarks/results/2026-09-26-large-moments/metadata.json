@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "created_utc": "2026-09-26T16:28:04Z",
+  "protocol": "fixed-grid Euler, shared standard normals, float64, initial+final output",
+  "reference": "NumPy Euler on a coupled finer grid, not an exact solution",
+  "config": {
+    "profile": "pilot",
+    "backends": [
+      "mvkit-core",
+      "mvkit-python",
+      "numpy",
+      "numba",
+      "diffrax",
+      "sciml"
+    ],
+    "cases": [
+      "moments"
+    ],
+    "steps": [
+      128
+    ],
+    "particles": 65536,
+    "seeds": [
+      7,
+      19,
+      41
+    ],
+    "threads": [
+      1,
+      4
+    ],
+    "repeats": 7,
+    "reference_factor": 4,
+    "timeout": 600
+  },
+  "environment": {
+    "git_revision": "2ea6c46c1d11b028b6d19b73bfd84cd47b80a270",
+    "working_tree_dirty": true,
+    "source_sha256": "ef867d98e42be781755add0c263c65b67f0d2ef26d3c0f5901fd7067c591f2f4",
+    "python": "3.12.14",
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "AMD EPYC 9V74 80-Core Processor",
+    "logical_cpus": 9,
+    "physical_cpus": 9,
+    "available_affinity": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ],
+    "cpu_quota": "800000 100000",
+    "memory_limit": "8589934592",
+    "packages": [
+      "Pygments==2.21.0",
+      "diffrax==0.7.2",
+      "equinox==0.13.8",
+      "iniconfig==2.3.0",
+      "jax==0.11.2",
+      "jaxlib==0.11.2",
+      "jaxtyping==0.3.11",
+      "lineax==0.1.1",
+      "llvmlite==0.49.0",
+      "maturin==1.15.0",
+      "ml_dtypes==0.6.0",
+      "mvkit==0.1.0",
+      "numba==0.67.0",
+      "numpy==2.5.3",
+      "opt_einsum==3.4.0",
+      "optimistix==0.1.0",
+      "packaging==26.3",
+      "pluggy==1.6.0",
+      "psutil==7.2.2",
+      "pytest==9.1.1",
+      "scipy==1.18.1",
+      "typing_extensions==4.16.0",
+      "wadler_lindig==0.1.7"
+    ],
+    "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)"
+  }
+}
