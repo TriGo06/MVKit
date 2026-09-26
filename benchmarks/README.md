@@ -76,6 +76,9 @@ python benchmarks/summarize_particle_benchmarks.py benchmarks/local-results/pilo
 ```
 
 Use `--julia PATH` if Julia is not on PATH. `--cases` selects a subset.
+Use `--particles N` to study larger or smaller systems; it overrides the
+particle count for every selected case. The exact pairwise case costs
+O(N^2) per step, so select cases deliberately for large-N studies.
 Use a new output directory for each run. A failure is retained in the raw
 results and makes the command exit unsuccessfully. Optional dependencies
 must be installed for the selected backends; missing packages are failures,

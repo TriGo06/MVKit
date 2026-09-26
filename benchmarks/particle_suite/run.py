@@ -157,6 +157,8 @@ def main():
     parser.add_argument("--cases", nargs="+", choices=["moments", "pairwise", "multiplicative"],
                         default=["moments", "pairwise", "multiplicative"])
     parser.add_argument("--steps", nargs="+", type=positive_int)
+    parser.add_argument("--particles", type=positive_int,
+                        help="Override the particle count for the selected cases")
     parser.add_argument("--seeds", nargs="+", type=int, default=[7, 19, 41])
     parser.add_argument("--threads", nargs="+", type=positive_int, default=[1])
     parser.add_argument("--repeats", type=positive_int, default=5)
@@ -192,6 +194,8 @@ def main():
     with rows_path.open("w") as stream:
         for name in args.cases:
             n, dim = sizes[name]
+            if args.particles is not None:
+                n = args.particles
             fine = Case(name, n, dim, fine_steps)
             for seed in args.seeds:
                 x0, z_fine = inputs(fine, seed)
