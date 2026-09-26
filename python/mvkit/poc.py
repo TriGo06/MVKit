@@ -32,7 +32,9 @@ from scipy.integrate import quad
 
 
 def _sorted_samples(samples: np.ndarray) -> np.ndarray:
-    arr = np.asarray(samples, dtype=np.float64).ravel()
+    arr = np.asarray(samples, dtype=np.float64)
+    if arr.ndim != 1:
+        raise ValueError(f"samples must be 1D, got shape {arr.shape}")
     if arr.size == 0 or not np.isfinite(arr).all():
         raise ValueError("samples must be non-empty and finite")
     return np.sort(arr)
@@ -44,18 +46,25 @@ def wasserstein2_to_reference(
     *,
     epsabs: float = 1e-10,
     epsrel: float = 1e-8,
+    reference_breakpoints: Sequence[float] = (),
 ) -> float:
     r"""Numerically integrate the 1D Wasserstein-2 quantile formula.
 
     The empirical quantile is constant on each interval of width 1/n.
-    Integrate the squared difference over these full intervals, including
-    the reference's tails, instead of replacing it by midpoint samples.
-    The reference must have a finite second moment.
+    Integrate the squared difference over these full intervals instead of
+    replacing it by midpoint samples. The reference must have a finite
+    second moment. Supply all known quantile discontinuities or narrow-feature
+    boundaries as probabilities in ``reference_breakpoints``. For a two-atom
+    reference with masses 0.9999 and 0.0001, pass ``[0.9999]``.
 
     ``epsabs`` and ``epsrel`` control QUADPACK's estimated absolute and
     relative error on W2 squared, not on W2. Failure to reach the requested
-    quadrature accuracy raises ``ValueError``. This is numerical quadrature,
-    not a symbolic exact integral for an arbitrary inverse CDF.
+    quadrature accuracy raises ``ValueError``. An adaptive rule can miss a
+    rare tail or narrow feature that none of its nodes samples, even with an
+    estimated error of zero. Without supplied breakpoints the callback should
+    be smooth on (0, 1), but even smoothness alone does not give a certified
+    error bound. This is numerical quadrature, not an exact or guaranteed
+    distance for an arbitrary inverse CDF.
 
     ``reference_inv_cdf`` must accept and return equally shaped arrays of
     interior probabilities. For example, pass ``scipy.stats.norm.ppf``.
@@ -66,6 +75,14 @@ def wasserstein2_to_reference(
     sorted_x = _sorted_samples(samples)
     n = sorted_x.size
     indices = np.arange(n, dtype=np.float64)
+    breaks = np.asarray(reference_breakpoints, dtype=np.float64)
+    if (breaks.ndim != 1 or not np.isfinite(breaks).all()
+            or ((breaks <= 0.0) | (breaks >= 1.0)).any()):
+        raise ValueError("reference_breakpoints must be 1D finite probabilities in (0, 1)")
+    # Under u=(i+v)/n, a quantile jump at q occurs at v=frac(n*q).
+    # A jump exactly on an empirical-cell boundary is already an endpoint.
+    points = np.unique(np.remainder(n * breaks, 1.0))
+    points = points[(points > 0.0) & (points < 1.0)]
 
     def integrand(v):
         # u = (i + v) / n on the i-th quantile interval. Summation
@@ -83,10 +100,34 @@ def wasserstein2_to_reference(
         return value
 
     result = quad(integrand, 0.0, 1.0, epsabs=epsabs, epsrel=epsrel,
-                  limit=200, full_output=1)
+                  points=points if points.size else None,
+                  limit=max(200, int(points.size) + 50), full_output=1)
     if len(result) != 3:
         raise ValueError(f"reference quantile integration failed: {result[3]}")
     return float(np.sqrt(max(0.0, result[0])))
+
+
+def _transport_norm(left, right, weights=None):
+    """Weighted RMS difference without squaring unscaled coordinates."""
+    with np.errstate(over="ignore"):
+        delta = left - right
+    scale = float(np.max(np.abs(delta)))
+    if scale == 0.0:
+        return 0.0
+    if np.isfinite(scale):
+        normalized = delta / scale
+    else:
+        # Opposite finite endpoints can have an overflowing difference while
+        # their weighted distance still fits in float64.
+        scale = max(float(np.max(np.abs(left))), float(np.max(np.abs(right))))
+        normalized = left / scale - right / scale
+    squares = normalized * normalized
+    cost = np.mean(squares) if weights is None else np.dot(weights, squares)
+    with np.errstate(over="ignore"):
+        distance = float(scale * np.sqrt(cost))
+    if not np.isfinite(distance):
+        raise ValueError("W2 distance exceeds the float64 range")
+    return distance
 
 
 def wasserstein2_between_samples(x: np.ndarray, y: np.ndarray) -> float:
@@ -100,15 +141,14 @@ def wasserstein2_between_samples(x: np.ndarray, y: np.ndarray) -> float:
     y_sorted = _sorted_samples(y)
     n, m = x_sorted.size, y_sorted.size
     if n == m:
-        return float(np.sqrt(np.mean((x_sorted - y_sorted) ** 2)))
+        return _transport_norm(x_sorted, y_sorted)
     x_breaks = np.arange(n + 1, dtype=np.float64) / n
     y_breaks = np.arange(m + 1, dtype=np.float64) / m
     breaks = np.union1d(x_breaks, y_breaks)
     midpoints = (breaks[:-1] + breaks[1:]) / 2.0
     x_idx = np.searchsorted(x_breaks[1:], midpoints, side="left")
     y_idx = np.searchsorted(y_breaks[1:], midpoints, side="left")
-    cost = np.sum(np.diff(breaks) * (x_sorted[x_idx] - y_sorted[y_idx]) ** 2)
-    return float(np.sqrt(cost))
+    return _transport_norm(x_sorted[x_idx], y_sorted[y_idx], np.diff(breaks))
 
 
 @dataclass
@@ -145,6 +185,8 @@ def estimate_propagation_of_chaos_rate(
     n_values: Sequence[int],
     n_seeds: int = 10,
     progress: bool = False,
+    *,
+    reference_breakpoints: Sequence[float] = (),
 ) -> PropagationOfChaosResult:
     """Sweep particle count, compute W2 to a reference law per seed, and
     fit the log-log convergence rate.
@@ -159,6 +201,10 @@ def estimate_propagation_of_chaos_rate(
     reference_inv_cdf : callable
         Inverse CDF of the McKean-Vlasov limit law at the same time. Must
         accept an array of quantiles in (0, 1).
+    reference_breakpoints : sequence of float, optional
+        Known quantile jumps or narrow-feature boundaries in (0, 1), passed
+        to :func:`wasserstein2_to_reference`. Its quadrature limitations apply
+        to every distance in this rate estimate as well.
     n_values : sequence of int
         Particle counts to sweep. Should span at least one order of
         magnitude for the slope fit to be meaningful.
@@ -197,13 +243,17 @@ def estimate_propagation_of_chaos_rate(
         enabled=progress,
     )
     for i, n, s in iterator:
-        samples = np.asarray(simulator(int(n), s)).ravel()
+        samples = np.asarray(simulator(int(n), s))
+        if samples.ndim != 1:
+            raise ValueError(f"simulator must return 1D samples, got shape {samples.shape}")
         if samples.size != n:
             raise ValueError(
                 f"simulator returned {samples.size} samples for "
                 f"n_particles = {n}"
             )
-        w2[i, s] = wasserstein2_to_reference(samples, reference_inv_cdf)
+        w2[i, s] = wasserstein2_to_reference(
+            samples, reference_inv_cdf, reference_breakpoints=reference_breakpoints,
+        )
 
     median = np.median(w2, axis=1)
     q25 = np.quantile(w2, 0.25, axis=1)

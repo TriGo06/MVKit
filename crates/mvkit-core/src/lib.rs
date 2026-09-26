@@ -7,6 +7,7 @@
 pub mod models;
 mod parallel;
 pub mod schemes;
+mod statistics;
 pub mod traits;
 
 pub use traits::MeanFieldSDE;

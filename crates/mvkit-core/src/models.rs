@@ -1,6 +1,7 @@
 //! Built-in mean-field models.
 
 use crate::parallel::map_coordinates;
+use crate::statistics::population_mean;
 use crate::traits::MeanFieldSDE;
 use ndarray::{Array1, ArrayView2, ArrayViewMut2, Axis};
 use rand::SeedableRng;
@@ -75,11 +76,12 @@ impl MeanFieldSDE for LinearQuadratic {
     }
 
     fn drift(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
-        let n = state.nrows();
-        // Keep the reduction order independent of the thread count.
-        let mean = state.column(0).sum() / n as f64;
         let a = self.a;
-        let b_mean = self.b * mean;
+        let b_mean = if self.b == 0.0 {
+            0.0
+        } else {
+            self.b * population_mean(state.column(0))
+        };
 
         map_coordinates(state, out, |x| a * x + b_mean);
     }
@@ -246,7 +248,8 @@ fn cucker_smale_contiguous<const D: usize>(state: &[f64], out: &mut [f64], beta:
 /// r(t) e^{i psi(t)} = (1/N) sum_j exp(i theta_j(t))
 /// ```
 /// with `r in [0, 1]`. For Gaussian `omega_i ~ N(0, omega_std^2)` the
-/// classical critical coupling is `K_c = 2 omega_std sqrt(2 / pi)`: below
+/// noise-free, infinite-population critical coupling is
+/// `K_c = 2 omega_std sqrt(2 / pi)`: below
 /// `K_c` the population stays incoherent (`r -> 0`), above it a fraction of
 /// oscillators lock and `r` stabilizes between 0 and 1.
 ///
@@ -280,7 +283,9 @@ impl Kuramoto {
 
     /// Convenience constructor: `n_particles` natural frequencies sampled
     /// i.i.d. from a centered Gaussian with standard deviation `omega_std`,
-    /// using a deterministic Xoshiro256++ seeded by `seed`.
+    /// using a deterministic Xoshiro256++ seeded by `seed`, then advanced
+    /// by its 2^128-step jump. The unjumped stream is reserved for the
+    /// integrator, so using the same seed for both does not reuse normals.
     pub fn with_gaussian_omegas(
         coupling_k: f64,
         n_particles: usize,
@@ -288,7 +293,12 @@ impl Kuramoto {
         sigma: f64,
         seed: u64,
     ) -> Self {
+        assert!(
+            omega_std.is_finite() && omega_std >= 0.0,
+            "omega_std must be finite and >= 0"
+        );
         let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+        rng.jump();
         let dist = Normal::new(0.0, omega_std).expect("omega_std must be finite and >= 0");
         let omegas = Array1::from_iter((0..n_particles).map(|_| dist.sample(&mut rng)));
         Self::new(coupling_k, omegas, sigma)
@@ -360,14 +370,14 @@ impl MeanFieldSDE for Kuramoto {
 /// where `mean(X) = (1/N) sum_j X_j`. The diffusion is square-root in the
 /// state, which makes Milstein non-trivial: `(d/dx)(sigma sqrt(x)) =
 /// 0.5 sigma / sqrt(x)`. The truncation `max(X_i, 0)` keeps the diffusion
-/// real if the discretization underflows below zero. With the Feller
-/// condition `2 kappa theta >= sigma^2`, the continuous-time process stays
-/// strictly positive and the truncation is rarely needed.
+/// real if a discrete step crosses zero. With non-negative coupling `b`,
+/// strictly positive initial states, and `2 kappa theta >= sigma^2`, the
+/// continuous-time process stays strictly positive. Euler and Milstein
+/// do not guarantee positivity of the discrete states, even then.
 ///
-/// In the limit `b -> 0`, each particle is an independent classical CIR
-/// process and the marginal mean satisfies the closed form
-/// `E[X_t] = theta + (X_0 - theta) exp(-kappa t)`. We use this as a
-/// quantitative benchmark in the Milstein vs Euler test suite.
+/// When `b = 0`, each particle is an independent classical CIR process.
+/// For any admissible `b`, interaction terms cancel in the population sum:
+/// `E[mean(X_t)] = theta + (mean(X_0) - theta) exp(-kappa t)`.
 ///
 /// References: Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). *A
 /// theory of the term structure of interest rates*. Econometrica 53, 385-407,
@@ -381,7 +391,26 @@ pub struct MeanFieldCIR {
 }
 
 impl MeanFieldCIR {
+    /// Construct a CIR model. `kappa`, `theta`, and `sigma` must be positive
+    /// and finite; `b` must be non-negative and finite. Panics otherwise.
+    /// Initial states passed to an integrator must be finite and non-negative.
     pub fn new(kappa: f64, theta: f64, b: f64, sigma: f64) -> Self {
+        assert!(
+            kappa.is_finite() && kappa > 0.0,
+            "kappa must be positive and finite"
+        );
+        assert!(
+            theta.is_finite() && theta > 0.0,
+            "theta must be positive and finite"
+        );
+        assert!(
+            b.is_finite() && b >= 0.0,
+            "b must be non-negative and finite"
+        );
+        assert!(
+            sigma.is_finite() && sigma > 0.0,
+            "sigma must be positive and finite"
+        );
         Self {
             kappa,
             theta,
@@ -401,8 +430,11 @@ impl MeanFieldSDE for MeanFieldCIR {
     }
 
     fn drift(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
-        let n = state.nrows();
-        let mean = state.column(0).sum() / n as f64;
+        let mean = if self.b == 0.0 {
+            0.0
+        } else {
+            population_mean(state.column(0))
+        };
         let kappa = self.kappa;
         let theta = self.theta;
         let b = self.b;
@@ -417,17 +449,30 @@ impl MeanFieldSDE for MeanFieldCIR {
     }
 
     fn diffusion_derivative(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
-        // d/dx (sigma sqrt(x)) = 0.5 * sigma / sqrt(x), which diverges at
-        // x = 0. We floor x at a small positive eps so the derivative
-        // stays finite even when a particle is exactly at, or just below,
-        // zero. In the Milstein update the correction term is
-        // 0.5 * sigma * sigma_deriv * dt * (Z^2 - 1) = 0.25 * sigma^2 * dt * (Z^2 - 1)
-        // for x > 0, which matches the standard CIR Milstein scheme.
-        // When x <= 0, the diffusion itself is zero (truncated), so the
-        // entire correction term vanishes regardless of the floored
-        // derivative.
-        const EPS: f64 = 1e-12;
+        // The derivative is singular at zero. Use zero there for the
+        // truncated discrete extension; Milstein uses the product below.
         let sigma = self.sigma;
-        map_coordinates(state, out, |x| 0.5 * sigma / x.max(EPS).sqrt());
+        map_coordinates(state, out, |x| {
+            if x > 0.0 {
+                0.5 * sigma / x.sqrt()
+            } else {
+                0.0
+            }
+        });
+    }
+
+    fn milstein_coefficient(
+        &self,
+        state: ArrayView2<f64>,
+        dt: f64,
+        out: ArrayViewMut2<f64>,
+    ) -> bool {
+        // g*g' = sigma^2/2 for every x > 0: do not multiply a tiny
+        // diffusion by a singular derivative or introduce a unit-dependent floor.
+        // Scaling before squaring also avoids overflowing sigma^2 prematurely.
+        let half_step_scale = 0.5 * self.sigma * dt.sqrt();
+        let coefficient = half_step_scale * half_step_scale;
+        map_coordinates(state, out, |x| if x > 0.0 { coefficient } else { 0.0 });
+        true
     }
 }

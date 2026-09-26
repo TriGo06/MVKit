@@ -49,8 +49,9 @@ def generate_increments(
         built-in mvkit model: 1 for ``LinearQuadratic``, ``Kuramoto``, and
         ``MeanFieldCIR``; ``2 * spatial_dim`` for ``CuckerSmale``.
     seed : int or numpy.random.Generator, default 42
-        RNG seed (or a pre-built ``Generator``). Identical seeds give
-        bit-exact identical arrays.
+        RNG seed (or a pre-built ``Generator``). Identical seeds and inputs
+        are repeatable in the same NumPy build and environment. A supplied
+        generator advances its state. These are not the native Rust stream.
 
     Returns
     -------

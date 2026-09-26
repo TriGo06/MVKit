@@ -380,8 +380,10 @@ mod functions {
                 "theta must be a positive finite number",
             ));
         }
-        if !b.is_finite() {
-            return Err(pyo3::exceptions::PyValueError::new_err("b must be finite"));
+        if !b.is_finite() || b < 0.0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "b must be non-negative and finite",
+            ));
         }
         if !sigma.is_finite() || sigma <= 0.0 {
             return Err(pyo3::exceptions::PyValueError::new_err(
@@ -389,6 +391,11 @@ mod functions {
             ));
         }
 
+        if x0_view.iter().any(|x| !x.is_finite() || *x < 0.0) {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "x0 must contain finite non-negative CIR states",
+            ));
+        }
         let n_particles = x0_view.nrows();
         let increments_owned = take_increments(increments, n_steps, n_particles, 1)?;
         let x0_owned: Array2<f64> = x0_view.to_owned();
