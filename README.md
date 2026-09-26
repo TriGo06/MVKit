@@ -32,7 +32,12 @@ Early alpha (v0.1). The current scope:
 - Reproducible seeded RNG (Xoshiro256++)
 - PyO3 bindings, abi3 wheels for Python 3.9+
 
-Roadmap (non-binding) for v0.2 and beyond: tamed schemes for super-linear drift, kernel-based interactions via FFT, non-quadratic Hamiltonians for the 2D grid solver, $d \ge 3$ grid solvers, and propagation-of-chaos rates beyond 1D via sliced Wasserstein.
+The development priority is high-performance stochastic particle simulation:
+competitive benchmarks, efficient interaction kernels, reproducible parallel
+noise, and a compiled path for custom models. See the
+[performance roadmap](docs/performance-roadmap.md) and the
+[competitive particle benchmark](benchmarks/README.md). Existing MFG solvers
+remain available alongside the particle simulation core.
 
 ## Install (from source)
 

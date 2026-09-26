@@ -1,0 +1,50 @@
+name: Particle benchmark validation
+
+on:
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "crates/**"
+      - "python/mvkit/__init__.py"
+      - "tests/test_particle_benchmarks.py"
+      - "Cargo.toml"
+      - ".github/workflows/particle-benchmarks.yml"
+  workflow_dispatch:
+
+jobs:
+  agreement:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: julia-actions/setup-julia@v2
+        with:
+          version: "1.13"
+      - uses: julia-actions/cache@v2
+      - name: Install benchmark environments
+        run: |
+          python -m venv .venv
+          source .venv/bin/activate
+          python -m pip install -r benchmarks/requirements.lock
+          cp benchmarks/locks/Cargo.lock Cargo.lock
+          maturin develop --release
+          cargo build --release -p mvkit-core --example particle_benchmark
+          julia --project=benchmarks/sciml -e 'using Pkg; Pkg.instantiate(); Pkg.precompile()'
+      - name: Validate shared-noise agreement
+        run: |
+          source .venv/bin/activate
+          python benchmarks/run_particle_benchmarks.py --profile smoke \
+            --backends mvkit-core mvkit-python numpy numba diffrax sciml \
+            --threads 1 --seeds 7 --steps 8 --repeats 2 \
+            --output benchmarks/local-results/ci
+          python benchmarks/summarize_particle_benchmarks.py benchmarks/local-results/ci
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: particle-benchmark-validation
+          path: benchmarks/local-results/ci
