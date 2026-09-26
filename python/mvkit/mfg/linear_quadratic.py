@@ -54,6 +54,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 
 from .._progress import progress_iter
+from ._random import StreamRole, rng_for_role
 from ._riccati import solve_riccati
 from ._lq_control import affine_response_operator
 
@@ -208,14 +209,13 @@ def _simulate_under_control(
 
 
 _VALID_METHODS = ("picard", "fictitious_play")
-_SIM_SEED_MASK = 0xA5A5A5A5
 
 
 def _draw_x0(
     mu_0_mean: float, mu_0_var: float, n_particles: int, seed: int
 ) -> np.ndarray:
     """Sample the initial particle states ``x0 ~ N(mu_0_mean, mu_0_var)``."""
-    rng = np.random.default_rng(int(seed))
+    rng = rng_for_role(seed, StreamRole.SCALAR_INITIAL)
     return rng.normal(
         loc=float(mu_0_mean),
         scale=np.sqrt(float(mu_0_var)),
@@ -245,7 +245,7 @@ def _lq_best_response(
     traj = _simulate_under_control(
         _draw_x0(mu_0_mean, mu_0_var, n_particles, seed), t_grid,
         P, linear[:, 0], sigma,
-        np.random.default_rng(int(seed) ^ _SIM_SEED_MASK),
+        rng_for_role(seed, StreamRole.SCALAR_DYNAMICS),
     )
     return traj.mean(axis=1)
 
@@ -369,8 +369,9 @@ def solve_lq_mfg(
     tol : float, default 1e-4
         Sup-norm tolerance on ``BR(m) - m`` at the returned mean.
     seed : int, default 42
-        Master RNG seed. Identical seeds plus identical inputs give
-        identical outputs.
+        Master RNG seed, with separate PCG64/SeedSequence roles for initial
+        states and dynamics. Identical inputs and seed are repeatable in the
+        same environment. Noise is reused across outer iterations.
     m_initial : ndarray, optional
         Initial guess for the mean trajectory, shape ``(n_grid + 1,)``.
         Defaults to a constant trajectory equal to ``mu_0_mean``. Useful
@@ -432,7 +433,7 @@ def solve_lq_mfg(
     base = _simulate_under_control(
         _draw_x0(mu_0_mean, mu_0_var, n_particles, seed), t_grid,
         P, np.zeros(g), float(sigma),
-        np.random.default_rng(int(seed) ^ _SIM_SEED_MASK),
+        rng_for_role(seed, StreamRole.SCALAR_DYNAMICS),
     )
     base_mean = base.mean(axis=1)
 

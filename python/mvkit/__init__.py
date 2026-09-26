@@ -90,7 +90,8 @@ def simulate_cucker_smale(
         Record state every ``k`` steps. If 0, only the initial and final
         states are stored.
     seed : int, default 42
-        RNG seed. Identical seeds give bit-exact identical trajectories.
+        RNG seed. Identical inputs and seed are repeatable in the same build
+        and environment; cross-platform bitwise identity is not guaranteed.
     scheme : str, default "euler"
         Integrator to use: ``"euler"`` (Euler-Maruyama) or ``"milstein"``
         (Milstein). On constant-diffusion models like Cucker-Smale,
@@ -193,7 +194,8 @@ def simulate_linear_quadratic(
         Record state every ``k`` steps. If 0, only the initial and final
         states are stored.
     seed : int, default 42
-        RNG seed. Identical seeds give bit-exact identical trajectories.
+        RNG seed. Identical inputs and seed are repeatable in the same build
+        and environment; cross-platform bitwise identity is not guaranteed.
     increments : ndarray, optional
         Precomputed standard normals of shape ``(n_steps, N, 1)``. When
         supplied, the integrator uses these instead of sampling
@@ -306,7 +308,8 @@ def simulate_kuramoto(
         Record state every ``k`` steps. If 0, only the initial and final
         states are stored.
     seed : int, default 42
-        RNG seed. Identical seeds give bit-exact identical trajectories.
+        RNG seed. Identical inputs and seed are repeatable in the same build
+        and environment; cross-platform bitwise identity is not guaranteed.
     increments : ndarray, optional
         Precomputed standard normals of shape ``(n_steps, N, 1)``. When
         supplied, the integrator uses these instead of sampling
@@ -388,10 +391,10 @@ def simulate_mean_field_cir(
     diffusion is square-root in the state, which makes Milstein non-trivial.
 
     The truncation :math:`\max(X_i, 0)` keeps the diffusion real if a
-    discretization step underflows below zero. The Feller condition
-    :math:`2\kappa\theta \ge \sigma^2` guarantees that the continuous-time
-    process stays strictly positive, in which case the truncation is rarely
-    activated.
+    discrete step crosses zero. With non-negative interaction ``b`` and
+    strictly positive initial states, the Feller condition
+    :math:`2\kappa\theta \ge \sigma^2` keeps the continuous-time process
+    strictly positive. Neither discrete scheme guarantees positivity.
 
     In the limit :math:`b = 0`, the interaction term vanishes and each
     particle is an independent classical CIR process. The marginal mean
@@ -406,7 +409,7 @@ def simulate_mean_field_cir(
     Parameters
     ----------
     x0 : ndarray, shape (N, 1)
-        Initial states. Should be non-negative.
+        Initial states. Must be finite and non-negative.
     t_final : float
         Final integration time.
     n_steps : int
@@ -416,20 +419,22 @@ def simulate_mean_field_cir(
     theta : float
         Long-run mean. Must be positive.
     b : float
-        Mean-field interaction coefficient. Set to 0 to recover independent
-        classical CIR.
+        Non-negative finite interaction coefficient. Set to 0 to recover
+        independent classical CIR.
     sigma : float
         Diffusion strength on the square-root noise term. Must be positive.
     record_every : int, default 0
         Record state every ``k`` steps. If 0, only the initial and final
         states are stored.
     seed : int, default 42
-        RNG seed. Identical seeds give bit-exact identical trajectories.
+        RNG seed. Identical inputs and seed are repeatable in the same build
+        and environment; cross-platform bitwise identity is not guaranteed.
     scheme : str, default "euler"
         Integrator: ``"euler"`` for Euler-Maruyama or ``"milstein"`` for
         Milstein. The correction term is :math:`0.25 \sigma^2 dt (Z^2 - 1)`,
-        which is non-trivial here because the diffusion derivative
-        :math:`d/dx (\sigma \sqrt{x}) = 0.5 \sigma / \sqrt{x}` is non-zero.
+        for positive states, evaluated directly without a derivative floor.
+        For non-positive discrete states the truncated diffusion and its
+        correction are zero; the drift can return the state to the domain.
     increments : ndarray, optional
         Precomputed standard normals of shape ``(n_steps, N, 1)``. When
         supplied, the integrator uses these instead of sampling

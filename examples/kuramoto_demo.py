@@ -1,16 +1,17 @@
 """Kuramoto demo: phase trajectories and order parameter on either side
-of the critical coupling.
+of the noise-free critical coupling, with weak dynamic noise.
 
 Usage:
     pip install matplotlib
     python examples/kuramoto_demo.py
 
 Three panels:
-    Top-left:  theta_i(t) mod 2*pi for ~50 sample particles, sub-critical K.
-    Top-right: same but super-critical K (visible bunching of phases).
-    Bottom:    order parameter r(t) for both regimes on the same axes,
-               with the predicted asymptote sqrt(1 - K_c / K) for the
-               super-critical run shown as a dashed line.
+    Top-left:  theta_i(t) mod 2*pi for ~50 particles, below the reference K_c.
+    Top-right: same above the reference K_c (visible bunching of phases).
+    Bottom:    order parameter r(t) for both runs on the same axes.
+
+The reference K_c assumes zero dynamic noise and an infinite population;
+the simulated finite population with nonzero noise is a different regime.
 """
 
 from __future__ import annotations
@@ -86,7 +87,7 @@ def main() -> None:
             lw=0.6,
         )
     axd["sub"].set_title(
-        f"Sub-critical K = {k_sub:.2f} ($K_c \\approx$ {k_critical:.2f})"
+        f"Below noise-free threshold: K = {k_sub:.2f}"
     )
     axd["sub"].set_xlabel("t")
     axd["sub"].set_ylabel(r"$\theta_i(t) \, \mathrm{mod} \, 2\pi$")
@@ -100,34 +101,28 @@ def main() -> None:
             alpha=0.4,
             lw=0.6,
         )
-    axd["sup"].set_title(f"Super-critical K = {k_super:.2f}")
+    axd["sup"].set_title(f"Above noise-free threshold: K = {k_super:.2f}")
     axd["sup"].set_xlabel("t")
     axd["sup"].set_ylabel(r"$\theta_i(t) \, \mathrm{mod} \, 2\pi$")
     axd["sup"].set_ylim(0.0, 2.0 * np.pi)
 
     axd["r"].plot(
-        times, r_sub, color="tab:blue", label=f"K = {k_sub:.2f} (sub-critical)"
+        times, r_sub, color="tab:blue", label=f"K = {k_sub:.2f}"
     )
     axd["r"].plot(
         times,
         r_super,
         color="tab:red",
-        label=f"K = {k_super:.2f} (super-critical)",
+        label=f"K = {k_super:.2f}",
     )
-    r_predicted = np.sqrt(max(0.0, 1.0 - k_critical / k_super))
-    axd["r"].axhline(
-        r_predicted,
-        color="tab:red",
-        linestyle="--",
-        alpha=0.5,
-        label=fr"predicted $r_\infty = \sqrt{{1 - K_c/K}} \approx {r_predicted:.2f}$",
-    )
+    # The Lorentzian closed form does not apply to Gaussian frequencies.
+    # K_c is the noise-free threshold; this simulation has dynamic noise.
     axd["r"].set_xlabel("t")
     axd["r"].set_ylabel("r(t)")
     axd["r"].set_ylim(0.0, 1.0)
     axd["r"].set_title(
         f"Order parameter (Gaussian $\\omega \\sim N(0, {omega_std}^2)$, "
-        f"$K_c \\approx$ {k_critical:.2f})"
+        f"noise-free $K_c \\approx$ {k_critical:.2f})"
     )
     axd["r"].legend(loc="center right")
     axd["r"].grid(alpha=0.3)
