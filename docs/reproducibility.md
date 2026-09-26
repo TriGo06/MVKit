@@ -66,3 +66,14 @@ The current corrections change Kuramoto's generated frequencies and LQ-MFG
 streams. Native integrator normal generation is unchanged. Compensated mean
 reductions and the corrected CIR Milstein coefficient can change trajectory
 rounding, and the CIR correction changes mathematically below the old floor.
+
+Population means use eight fixed compensated lanes. Contiguous x86_64
+populations use AVX when runtime detection reports CPU and operating-system
+support, or SSE2 otherwise; other targets have a portable scalar path.
+The lane assignment and arithmetic order agree across these implementations.
+Small populations avoid dispatch, and strided views use the scalar path.
+Overflowing intermediate sums trigger a scaled reduction. These remain
+float64 calculations, not exact or correctly rounded sums; extremely wide
+dynamic ranges can still lose terms when the scaled fallback underflows.
+Compensation assumes IEEE round-to-nearest arithmetic with gradual underflow;
+reassociation or flushing subnormal values to zero invalidates that assumption.

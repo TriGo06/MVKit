@@ -13,10 +13,12 @@
   of flooring its diffusion derivative. Keep the truncated coefficient zero
   for non-positive discrete states.
 - Require non-negative finite CIR interaction and finite non-negative Python
-  initial states. The numerical schemes still do not preserve positivity.
-- Use deterministic block reductions for population means, with compensated
-  cancellation and scaled overflow fallbacks in the linear and CIR models;
-  skip unused means at zero coupling.
+  initial states. The Rust constructor now enforces the positive finite
+  kappa/theta/sigma domain already required by Python. The numerical schemes
+  still do not preserve positivity.
+- Use deterministic compensated population means in one pass, with runtime
+  AVX dispatch, SSE2/portable fallbacks and a scaled overflow fallback in the
+  linear and CIR models; skip unused means at zero coupling.
 - Accept `reference_breakpoints` for reference-quantile Wasserstein integration
   and rate estimation. Known rare atoms can now be integrated explicitly;
   quadrature of an arbitrary opaque quantile remains uncertified.

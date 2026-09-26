@@ -6,6 +6,8 @@ use mvkit_core::{
     MeanFieldSDE,
 };
 use ndarray::{array, Array2, Array3};
+use rand::{seq::SliceRandom, SeedableRng};
+use rand_xoshiro::Xoshiro256PlusPlus;
 use rayon::ThreadPoolBuilder;
 
 #[test]
@@ -147,6 +149,35 @@ fn mean_handles_extreme_magnitudes_and_strided_columns() {
     let mut drift = Array2::zeros(x.raw_dim());
     model.drift(x.view(), drift.view_mut());
     assert!(drift.iter().all(|&actual| actual == 17.0 / 19.0));
+}
+
+#[test]
+fn mean_recovers_exact_residuals_across_lanes_and_layouts() {
+    let model = LinearQuadratic::new(0.0, 1.0, 0.0);
+    let mut rng = Xoshiro256PlusPlus::seed_from_u64(71);
+    for n in [3, 7, 8, 9, 15, 16, 17, 31, 127, 128, 129, 511] {
+        let residual_count = if n % 2 == 0 { 2 } else { 1 };
+        let mut values = Vec::with_capacity(n);
+        for i in 0..(n - residual_count) / 2 {
+            let large = 2.0_f64.powi(40 + (i % 21) as i32);
+            values.extend([large, -large]);
+        }
+        values.extend((1..=residual_count).map(|i| i as f64));
+        // Every large term has an exact negative partner; the integer
+        // residual gives an oracle independent of the reduction algorithm.
+        let expected = (residual_count * (residual_count + 1) / 2) as f64 / n as f64;
+        for _ in 0..16 {
+            values.shuffle(&mut rng);
+            let x = Array2::from_shape_vec((n, 1), values.clone()).unwrap();
+            let strided =
+                Array2::from_shape_fn((n, 2), |(i, k)| if k == 0 { values[i] } else { f64::NAN });
+            let mut out = Array2::zeros((n, 1));
+            for view in [x.view(), strided.slice(ndarray::s![.., ..;2])] {
+                model.drift(view, out.view_mut());
+                assert!(out.iter().all(|&actual| actual == expected), "n={n}");
+            }
+        }
+    }
 }
 
 #[test]
