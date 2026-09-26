@@ -1,7 +1,8 @@
 //! Built-in mean-field models.
 
+use crate::parallel::map_coordinates;
 use crate::traits::MeanFieldSDE;
-use ndarray::{s, Array1, ArrayView2, ArrayViewMut2, Axis};
+use ndarray::{Array1, ArrayView2, ArrayViewMut2, Axis};
 use rand::SeedableRng;
 use rand_distr::{Distribution, Normal};
 use rand_xoshiro::Xoshiro256PlusPlus;
@@ -61,6 +62,10 @@ impl LinearQuadratic {
 }
 
 impl MeanFieldSDE for LinearQuadratic {
+    fn constant_diffusion(&self) -> Option<&[f64]> {
+        Some(&self.sigma)
+    }
+
     fn supports_milstein(&self) -> bool {
         true
     }
@@ -69,21 +74,14 @@ impl MeanFieldSDE for LinearQuadratic {
         1
     }
 
-    fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+    fn drift(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
         let n = state.nrows();
-        // Empirical mean. Sequential add over a single column is already
-        // vectorized by the compiler and is cheap compared to the parallel
-        // update below.
+        // Keep the reduction order independent of the thread count.
         let mean = state.column(0).sum() / n as f64;
         let a = self.a;
         let b_mean = self.b * mean;
 
-        out.axis_iter_mut(Axis(0))
-            .into_par_iter()
-            .enumerate()
-            .for_each(|(i, mut out_row)| {
-                out_row[0] = a * state[[i, 0]] + b_mean;
-            });
+        map_coordinates(state, out, |x| a * x + b_mean);
     }
 
     fn diffusion(&self, _state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
@@ -132,6 +130,10 @@ impl CuckerSmale {
 }
 
 impl MeanFieldSDE for CuckerSmale {
+    fn constant_diffusion(&self) -> Option<&[f64]> {
+        Some(&self.sigma)
+    }
+
     fn supports_milstein(&self) -> bool {
         true
     }
@@ -150,39 +152,82 @@ impl MeanFieldSDE for CuckerSmale {
         let beta = self.beta;
         let n_inv = 1.0 / n as f64;
 
-        // Parallel over particles. O(N^2) per step; fine for N up to a few
-        // thousand. Kernel-based fast methods (FFT, FMM) come in v0.2.
-        out.axis_iter_mut(Axis(0))
-            .into_par_iter()
+        if let (Some(x), Some(output)) = (state.as_slice(), out.as_slice_mut()) {
+            match d {
+                1 => return cucker_smale_contiguous::<1>(x, output, beta),
+                2 => return cucker_smale_contiguous::<2>(x, output, beta),
+                3 => return cucker_smale_contiguous::<3>(x, output, beta),
+                _ => {}
+            }
+        }
+
+        // Arbitrary dimensions and strided views use the same exact sum.
+        // Accumulate in the output row, without a temporary allocation.
+        let row_drift = |(i, mut row): (usize, ndarray::ArrayViewMut1<f64>)| {
+            let xi = state.row(i);
+            for k in 0..d {
+                row[k] = xi[d + k];
+                row[d + k] = 0.0;
+            }
+            for xj in state.rows() {
+                let mut r2 = 0.0;
+                for k in 0..d {
+                    let dx = xj[k] - xi[k];
+                    r2 += dx * dx;
+                }
+                let kernel = (1.0 + r2).powf(-beta);
+                for k in 0..d {
+                    row[d + k] += kernel * (xj[d + k] - xi[d + k]);
+                }
+            }
+            for k in 0..d {
+                row[d + k] *= n_inv;
+            }
+        };
+        if n >= 32 && rayon::current_num_threads() > 1 {
+            out.axis_iter_mut(Axis(0))
+                .into_par_iter()
+                .with_min_len(8)
+                .enumerate()
+                .for_each(row_drift);
+        } else {
+            out.axis_iter_mut(Axis(0)).enumerate().for_each(row_drift);
+        }
+    }
+}
+
+// Specialize common spatial dimensions, keeping j in its original order.
+// No cutoff, symmetry reduction, approximate power, or reassociation is used.
+fn cucker_smale_contiguous<const D: usize>(state: &[f64], out: &mut [f64], beta: f64) {
+    let width = 2 * D;
+    let n = state.len() / width;
+    let n_inv = 1.0 / n as f64;
+    let row_drift = |(i, row): (usize, &mut [f64])| {
+        let xi = &state[i * width..(i + 1) * width];
+        let mut accum = [0.0; D];
+        for xj in state.chunks_exact(width) {
+            let mut r2 = 0.0;
+            for k in 0..D {
+                let dx = xj[k] - xi[k];
+                r2 += dx * dx;
+            }
+            let kernel = (1.0 + r2).powf(-beta);
+            for k in 0..D {
+                accum[k] += kernel * (xj[D + k] - xi[D + k]);
+            }
+        }
+        row[..D].copy_from_slice(&xi[D..]);
+        for k in 0..D {
+            row[D + k] = n_inv * accum[k];
+        }
+    };
+    if n >= 32 && rayon::current_num_threads() > 1 {
+        out.par_chunks_exact_mut(width)
+            .with_min_len(8)
             .enumerate()
-            .for_each(|(i, mut out_row)| {
-                let xi = state.slice(s![i, 0..d]);
-                let vi = state.slice(s![i, d..2 * d]);
-
-                // Position drift = velocity.
-                for k in 0..d {
-                    out_row[k] = vi[k];
-                }
-
-                // Velocity drift = mean-field interaction.
-                let mut accum = vec![0.0_f64; d];
-                for j in 0..n {
-                    let xj = state.slice(s![j, 0..d]);
-                    let vj = state.slice(s![j, d..2 * d]);
-                    let mut r2 = 0.0_f64;
-                    for k in 0..d {
-                        let dx = xj[k] - xi[k];
-                        r2 += dx * dx;
-                    }
-                    let kernel = (1.0 + r2).powf(-beta);
-                    for k in 0..d {
-                        accum[k] += kernel * (vj[k] - vi[k]);
-                    }
-                }
-                for k in 0..d {
-                    out_row[d + k] = n_inv * accum[k];
-                }
-            });
+            .for_each(row_drift);
+    } else {
+        out.chunks_exact_mut(width).enumerate().for_each(row_drift);
     }
 }
 
@@ -251,6 +296,10 @@ impl Kuramoto {
 }
 
 impl MeanFieldSDE for Kuramoto {
+    fn constant_diffusion(&self) -> Option<&[f64]> {
+        Some(&self.sigma)
+    }
+
     fn supports_milstein(&self) -> bool {
         true
     }
@@ -351,36 +400,23 @@ impl MeanFieldSDE for MeanFieldCIR {
         1
     }
 
-    fn drift(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+    fn drift(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
         let n = state.nrows();
         let mean = state.column(0).sum() / n as f64;
         let kappa = self.kappa;
         let theta = self.theta;
         let b = self.b;
 
-        out.axis_iter_mut(Axis(0))
-            .into_par_iter()
-            .enumerate()
-            .for_each(|(i, mut out_row)| {
-                let x = state[[i, 0]];
-                out_row[0] = kappa * (theta - x) + b * (mean - x);
-            });
+        map_coordinates(state, out, |x| kappa * (theta - x) + b * (mean - x));
     }
 
-    fn diffusion(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+    fn diffusion(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
         let sigma = self.sigma;
-        out.axis_iter_mut(Axis(0))
-            .into_par_iter()
-            .enumerate()
-            .for_each(|(i, mut out_row)| {
-                let x = state[[i, 0]];
-                // Truncate at zero to keep sigma * sqrt(x) real if a
-                // discretization step pushed X below zero.
-                out_row[0] = sigma * x.max(0.0).sqrt();
-            });
+        // Truncate at zero if a discrete step crossed the boundary.
+        map_coordinates(state, out, |x| sigma * x.max(0.0).sqrt());
     }
 
-    fn diffusion_derivative(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
+    fn diffusion_derivative(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>) {
         // d/dx (sigma sqrt(x)) = 0.5 * sigma / sqrt(x), which diverges at
         // x = 0. We floor x at a small positive eps so the derivative
         // stays finite even when a particle is exactly at, or just below,
@@ -392,12 +428,6 @@ impl MeanFieldSDE for MeanFieldCIR {
         // derivative.
         const EPS: f64 = 1e-12;
         let sigma = self.sigma;
-        out.axis_iter_mut(Axis(0))
-            .into_par_iter()
-            .enumerate()
-            .for_each(|(i, mut out_row)| {
-                let x = state[[i, 0]];
-                out_row[0] = 0.5 * sigma / x.max(EPS).sqrt();
-            });
+        map_coordinates(state, out, |x| 0.5 * sigma / x.max(EPS).sqrt());
     }
 }

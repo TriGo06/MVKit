@@ -8,6 +8,8 @@ float64 states. It is the first stage of the
 
 The [initial CPU study](results/2026-09-26-findings.md) includes the raw
 measurements, observed performance gaps and next profiling priorities.
+The [first kernel optimization](results/2026-09-26-kernel-optimization/README.md)
+records matched before/after timings and cross-revision trajectory checks.
 
 ## Problems
 
@@ -86,6 +88,21 @@ Use a new output directory for each run. A failure is retained in the raw
 results and makes the command exit unsuccessfully. Optional dependencies
 must be installed for the selected backends; missing packages are failures,
 not silent exclusions. Avoid running other CPU-heavy work during a study.
+
+To check trajectory compatibility between two installed revisions:
+
+```bash
+python benchmarks/check_engine_compatibility.py \
+  --baseline-python /path/to/baseline/.venv/bin/python \
+  --candidate-python /path/to/candidate/.venv/bin/python \
+  --output benchmarks/local-results/compatibility.json
+```
+
+This separate check compares recorded states byte for byte across revisions
+and one/four Rayon threads. It covers both Euler and Milstein, supplied and
+internally generated noise, two seeds, all four built-in models and four
+Cucker-Smale spatial dimensions. It records extension hashes and does not
+measure performance. Cross-platform bitwise identity is not implied.
 
 On Linux, each worker inherits an affinity mask limited to the requested
 logical CPU budget. Rayon, Numba and Julia thread counts are configured;

@@ -1,0 +1,1044 @@
+{
+  "protocol": "bitwise recorded-trajectory comparison",
+  "workers": [
+    {
+      "revision": "baseline",
+      "threads": 1,
+      "python": "3.12.14",
+      "numpy": "2.5.3",
+      "core_sha256": "971cae951d8a6665a8ffbfb7b68e48a0e702db47aa2dfd7ce9e8f7d6ac1ede63"
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "python": "3.12.14",
+      "numpy": "2.5.3",
+      "core_sha256": "971cae951d8a6665a8ffbfb7b68e48a0e702db47aa2dfd7ce9e8f7d6ac1ede63"
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "python": "3.12.14",
+      "numpy": "2.5.3",
+      "core_sha256": "ec984c1e36f82f82439fc48ae1b5aef8672ec11d921a5329c6c06a07c64128af"
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "python": "3.12.14",
+      "numpy": "2.5.3",
+      "core_sha256": "ec984c1e36f82f82439fc48ae1b5aef8672ec11d921a5329c6c06a07c64128af"
+    }
+  ],
+  "checks": [
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "linear-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cir-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "kuramoto-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-1-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-2-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-3-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "baseline",
+      "threads": 4,
+      "case": "cucker-5-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "linear-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cir-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "kuramoto-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-1-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-2-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-3-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 1,
+      "case": "cucker-5-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "linear-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cir-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "kuramoto-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-1-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-2-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-3-19-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-7-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-7-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-7-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-7-milstein-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-19-euler-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-19-euler-supplied",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-19-milstein-generated",
+      "bitwise_equal": true
+    },
+    {
+      "revision": "candidate",
+      "threads": 4,
+      "case": "cucker-5-19-milstein-supplied",
+      "bitwise_equal": true
+    }
+  ],
+  "passed": true
+}
