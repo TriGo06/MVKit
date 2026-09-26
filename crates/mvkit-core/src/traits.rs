@@ -32,6 +32,17 @@ pub trait MeanFieldSDE: Sync {
     /// this simply fills `out` with the per-coordinate constants.
     fn diffusion(&self, state: ArrayView2<f64>, out: ArrayViewMut2<f64>);
 
+    /// Optional per-coordinate, state-independent diffusion coefficients.
+    ///
+    /// When present, the slice must have length `dim()` and agree with
+    /// `diffusion` for every state. All diffusion derivatives must be zero.
+    /// Integrators may then fill the diffusion buffer once per simulation
+    /// and use Euler for a requested Milstein step after checking its opt-in.
+    /// Defaults to `None`, preserving the general path for custom models.
+    fn constant_diffusion(&self) -> Option<&[f64]> {
+        None
+    }
+
     /// Opt in to the coordinatewise Milstein implementation.
     ///
     /// For distinct particle-coordinate pairs a and b, the model must

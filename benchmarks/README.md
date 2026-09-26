@@ -87,6 +87,21 @@ results and makes the command exit unsuccessfully. Optional dependencies
 must be installed for the selected backends; missing packages are failures,
 not silent exclusions. Avoid running other CPU-heavy work during a study.
 
+To check trajectory compatibility between two installed revisions:
+
+```bash
+python benchmarks/check_engine_compatibility.py \
+  --baseline-python /path/to/baseline/.venv/bin/python \
+  --candidate-python /path/to/candidate/.venv/bin/python \
+  --output benchmarks/local-results/compatibility.json
+```
+
+This separate check compares recorded states byte for byte across revisions
+and one/four Rayon threads. It covers both Euler and Milstein, supplied and
+internally generated noise, two seeds, all four built-in models and four
+Cucker-Smale spatial dimensions. It records extension hashes and does not
+measure performance. Cross-platform bitwise identity is not implied.
+
 On Linux, each worker inherits an affinity mask limited to the requested
 logical CPU budget. Rayon, Numba and Julia thread counts are configured;
 BLAS is restricted to one thread. JAX is restricted to CPU execution and

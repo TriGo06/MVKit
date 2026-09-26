@@ -1,10 +1,12 @@
 //! Numerical integrators for mean-field SDEs.
 
+use crate::parallel::{use_parallel, MIN_PARALLEL_LEN};
 use crate::traits::MeanFieldSDE;
 use ndarray::{Array2, Array3, Axis, Zip};
 use rand::SeedableRng;
 use rand_distr::{Distribution, StandardNormal};
 use rand_xoshiro::Xoshiro256PlusPlus;
+use rayon::prelude::*;
 
 /// Euler-Maruyama integrator for a mean-field SDE.
 ///
@@ -74,46 +76,58 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
     let mut history = Array3::<f64>::zeros((n_recorded, n, d));
     history.index_axis_mut(Axis(0), 0).assign(x0);
 
-    let mut state: Array2<f64> = x0.clone();
+    // Normalize once so coordinate updates traverse contiguous memory.
+    let mut state = x0.as_standard_layout().into_owned();
     let mut drift_buf = Array2::<f64>::zeros((n, d));
-    let mut noise_buf = Array2::<f64>::zeros((n, d));
+    // Supplied increments are borrowed one step at a time, without a copy.
+    let mut noise_buf = increments.is_none().then(|| Array2::<f64>::zeros((n, d)));
     let mut sigma_buf = Array2::<f64>::zeros((n, d));
+    let constant_diffusion = if let Some(values) = model.constant_diffusion() {
+        assert_eq!(values.len(), d, "constant diffusion dimension mismatch");
+        for (k, &value) in values.iter().enumerate() {
+            sigma_buf.column_mut(k).fill(value);
+        }
+        true
+    } else {
+        false
+    };
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+    let parallel_update = use_parallel(state.len());
 
     let mut record_idx = 1usize;
 
     for step in 1..=n_steps {
-        // Fill the noise buffer either from the precomputed increments
-        // (strong-error tests, shared Brownian path) or by sequential
-        // sampling. Sequential sampling is cheap (~10^7 samples/s with
-        // Ziggurat) and gives strict reproducibility regardless of the
-        // parallel scheduler.
-        match increments {
-            Some(inc) => {
-                noise_buf.assign(&inc.index_axis(Axis(0), step - 1));
-            }
+        let noise = match increments {
+            Some(inc) => inc.index_axis(Axis(0), step - 1),
             None => {
-                for v in noise_buf.iter_mut() {
+                let buffer = noise_buf.as_mut().unwrap();
+                // Fixed sampling order preserves results across thread counts.
+                for v in buffer.iter_mut() {
                     *v = StandardNormal.sample(&mut rng);
                 }
+                buffer.view()
             }
+        };
+
+        model.drift(state.view(), drift_buf.view_mut());
+        if !constant_diffusion {
+            model.diffusion(state.view(), sigma_buf.view_mut());
         }
 
-        // Drift and diffusion are filled by the model. They may be parallel
-        // internally; the integrator only relies on row independence.
-        model.drift(state.view(), drift_buf.view_mut());
-        model.diffusion(state.view(), sigma_buf.view_mut());
-
-        // x <- x + b dt + sigma sqrt(dt) Z, parallel update over rows.
-        Zip::from(state.rows_mut())
-            .and(drift_buf.rows())
-            .and(noise_buf.rows())
-            .and(sigma_buf.rows())
-            .par_for_each(|mut s_row, b_row, z_row, sigma_row| {
-                for k in 0..d {
-                    s_row[k] += b_row[k] * dt + sigma_row[k] * sqrt_dt * z_row[k];
-                }
-            });
+        let update = |s: &mut f64, &b: &f64, &z: &f64, &sigma: &f64| {
+            *s += b * dt + sigma * sqrt_dt * z;
+        };
+        let zip = Zip::from(&mut state)
+            .and(&drift_buf)
+            .and(noise)
+            .and(&sigma_buf);
+        if parallel_update {
+            zip.into_par_iter()
+                .with_min_len(MIN_PARALLEL_LEN)
+                .for_each(|(s, b, z, sigma)| update(s, b, z, sigma));
+        } else {
+            zip.for_each(update);
+        }
 
         let should_record = if record_every == 0 {
             step == n_steps
@@ -168,6 +182,9 @@ pub fn milstein<M: MeanFieldSDE>(
         model.supports_milstein(),
         "coordinatewise Milstein requires supports_milstein() and vanishing cross-noise derivatives"
     );
+    if model.constant_diffusion().is_some() {
+        return euler_maruyama(model, x0, t_final, n_steps, record_every, seed, increments);
+    }
     assert_eq!(x0.ncols(), model.dim(), "state dim mismatch");
     assert!(n_steps > 0, "n_steps must be > 0");
     assert!(t_final > 0.0, "t_final must be > 0");
@@ -202,46 +219,50 @@ pub fn milstein<M: MeanFieldSDE>(
     let mut history = Array3::<f64>::zeros((n_recorded, n, d));
     history.index_axis_mut(Axis(0), 0).assign(x0);
 
-    let mut state: Array2<f64> = x0.clone();
+    // Normalize once so coordinate updates traverse contiguous memory.
+    let mut state = x0.as_standard_layout().into_owned();
     let mut drift_buf = Array2::<f64>::zeros((n, d));
-    let mut noise_buf = Array2::<f64>::zeros((n, d));
+    // Supplied increments are borrowed one step at a time, without a copy.
+    let mut noise_buf = increments.is_none().then(|| Array2::<f64>::zeros((n, d)));
     let mut sigma_buf = Array2::<f64>::zeros((n, d));
     let mut sigma_deriv_buf = Array2::<f64>::zeros((n, d));
     let mut rng = Xoshiro256PlusPlus::seed_from_u64(seed);
+    let parallel_update = use_parallel(state.len());
 
     let mut record_idx = 1usize;
 
     for step in 1..=n_steps {
-        match increments {
-            Some(inc) => {
-                noise_buf.assign(&inc.index_axis(Axis(0), step - 1));
-            }
+        let noise = match increments {
+            Some(inc) => inc.index_axis(Axis(0), step - 1),
             None => {
-                for v in noise_buf.iter_mut() {
+                let buffer = noise_buf.as_mut().unwrap();
+                for v in buffer.iter_mut() {
                     *v = StandardNormal.sample(&mut rng);
                 }
+                buffer.view()
             }
-        }
+        };
 
         model.drift(state.view(), drift_buf.view_mut());
         model.diffusion(state.view(), sigma_buf.view_mut());
         model.diffusion_derivative(state.view(), sigma_deriv_buf.view_mut());
 
-        // x <- x + b dt + sigma sqrt(dt) Z + 0.5 sigma sigma' dt (Z^2 - 1).
-        // Parallel over rows; each row reads only its own buffers.
-        Zip::from(state.rows_mut())
-            .and(drift_buf.rows())
-            .and(noise_buf.rows())
-            .and(sigma_buf.rows())
-            .and(sigma_deriv_buf.rows())
-            .par_for_each(|mut s_row, b_row, z_row, sigma_row, sigma_deriv_row| {
-                for k in 0..d {
-                    let sigma_k = sigma_row[k];
-                    let z_k = z_row[k];
-                    let correction = half_dt * sigma_k * sigma_deriv_row[k] * (z_k * z_k - 1.0);
-                    s_row[k] += b_row[k] * dt + sigma_k * sqrt_dt * z_k + correction;
-                }
-            });
+        let update = |s: &mut f64, &b: &f64, &z: &f64, &sigma: &f64, &deriv: &f64| {
+            let correction = half_dt * sigma * deriv * (z * z - 1.0);
+            *s += b * dt + sigma * sqrt_dt * z + correction;
+        };
+        let zip = Zip::from(&mut state)
+            .and(&drift_buf)
+            .and(noise)
+            .and(&sigma_buf)
+            .and(&sigma_deriv_buf);
+        if parallel_update {
+            zip.into_par_iter()
+                .with_min_len(MIN_PARALLEL_LEN)
+                .for_each(|(s, b, z, sigma, deriv)| update(s, b, z, sigma, deriv));
+        } else {
+            zip.for_each(update);
+        }
 
         let should_record = if record_every == 0 {
             step == n_steps
