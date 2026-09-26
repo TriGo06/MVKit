@@ -19,5 +19,5 @@ def rng_for_role(seed: int, role: StreamRole) -> np.random.Generator:
     Reconstructing a role intentionally replays the same noise across outer
     iterations. Different master seeds do not exchange roles as with XOR masks.
     """
-    sequence = np.random.SeedSequence(seed, spawn_key=(int(role),))
+    sequence = np.random.SeedSequence(int(seed), spawn_key=(int(role),))
     return np.random.Generator(np.random.PCG64(sequence))
