@@ -4,6 +4,10 @@
 
 ### Correctness
 
+- Normalize reference Wasserstein costs before reduction so repeating large
+  finite samples does not overflow an intermediate sum.
+- Reject zero Cucker-Smale spatial dimensions with ValueError in both the
+  Python wrapper and native binding; reject negative dimensions in Python.
 - Separate Rust Kuramoto frequency generation from the integrator stream by
   a Xoshiro jump; identical constructor/integrator seeds no longer reuse noise.
 - Replace LQ-MFG XOR seed masks with fixed SeedSequence role identifiers and

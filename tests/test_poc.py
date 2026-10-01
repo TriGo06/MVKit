@@ -121,3 +121,22 @@ def test_estimate_rejects_singleton_n_values():
             n_values=[100],
             n_seeds=4,
         )
+
+
+@pytest.mark.parametrize("copies", [1, 1000])
+@pytest.mark.parametrize("scale", [1.0, 1e150, 1e153])
+def test_reference_w2_preserves_replicated_atoms_at_large_scale(copies, scale):
+    # Repeating zero atoms leaves delta_0 unchanged; W2(delta_0, delta_s) = s.
+    with np.errstate(over="raise", invalid="raise"):
+        distance = wasserstein2_to_reference(
+            np.zeros(copies), lambda u: np.full_like(u, scale)
+        )
+    assert distance / scale == pytest.approx(1.0, rel=1e-12, abs=0.0)
+
+
+def test_reference_w2_integrates_large_uniform_law():
+    # E[Y**2] = s**2 / 3 for Y uniform on [0, s].
+    scale = 1e153
+    with np.errstate(over="raise", invalid="raise"):
+        distance = wasserstein2_to_reference(np.zeros(1000), lambda u: scale * u)
+    assert distance / scale == pytest.approx(1 / np.sqrt(3), rel=1e-12)

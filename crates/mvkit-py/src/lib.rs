@@ -110,6 +110,11 @@ mod functions {
         scheme: &str,
         increments: Option<PyReadonlyArray3<'py, f64>>,
     ) -> PyResult<Bound<'py, PyArray3<f64>>> {
+        if spatial_dim == 0 {
+            return Err(pyo3::exceptions::PyValueError::new_err(
+                "spatial_dim must be >= 1",
+            ));
+        }
         let x0_view = x0.as_array();
         let expected_cols = 2 * spatial_dim;
         if x0_view.ncols() != expected_cols {
