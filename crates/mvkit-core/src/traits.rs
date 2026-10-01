@@ -49,20 +49,38 @@ pub trait MeanFieldSDE: Sync {
     /// satisfy sigma_b * partial_b sigma_a = 0. Dependence on other noisy
     /// coordinates or on the empirical measure can violate this condition,
     /// even when the diffusion matrix is diagonal. The self-derivative
-    /// returned by `diffusion_derivative` must also be correct. Constant
-    /// diffusion and coefficients depending only on their own coordinate
-    /// satisfy the structural condition. Defaults to false for custom models.
+    /// returned by `diffusion_derivative`, or the coefficient supplied by
+    /// `milstein_coefficient`, must also be correct. Constant diffusion and
+    /// coefficients depending only on their own coordinate satisfy the
+    /// structural condition. Defaults to false for custom models.
     fn supports_milstein(&self) -> bool {
         false
     }
 
     /// Compute the diagonal of the diffusion Jacobian:
-    /// `out[i, k] = d sigma^k / d X_i^k`. Needed by Milstein-type
+    /// `out[i, k] = d sigma^k / d X_i^k`. Used by Milstein-type
     /// schemes. Default returns zeros, suitable for constant diffusion.
     /// State-dependent models must provide the actual derivative before
     /// opting in via `supports_milstein`.
     fn diffusion_derivative(&self, state: ArrayView2<f64>, mut out: ArrayViewMut2<f64>) {
         let _ = state;
         out.fill(0.0);
+    }
+
+    /// Optionally fill `out` with `0.5 * dt * sigma * partial_self(sigma)`
+    /// and return true. This coefficient multiplies `(Z^2 - 1)` in Milstein.
+    ///
+    /// Models with a singular derivative but a regular product can evaluate
+    /// the coefficient directly. Define the discrete boundary extension
+    /// explicitly. The default returns false without touching `out`, so the
+    /// integrator uses `diffusion_derivative` and its existing operation order.
+    /// This does not relax the cross-noise condition in `supports_milstein`.
+    fn milstein_coefficient(
+        &self,
+        _state: ArrayView2<f64>,
+        _dt: f64,
+        _out: ArrayViewMut2<f64>,
+    ) -> bool {
+        false
     }
 }

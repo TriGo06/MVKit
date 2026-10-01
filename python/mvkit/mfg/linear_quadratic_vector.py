@@ -50,6 +50,7 @@ from typing import List, Optional
 import numpy as np
 
 from .._progress import progress_iter
+from ._random import StreamRole, rng_for_role
 from ._lq_control import affine_response_operator
 from ._riccati_matrix import (
     _check_square_psd,
@@ -58,7 +59,6 @@ from ._riccati_matrix import (
 )
 
 _VALID_METHODS = ("picard", "fictitious_play")
-_SIM_SEED_MASK = 0x5A5A5A5A
 
 
 @dataclass
@@ -147,7 +147,7 @@ def _draw_x0(
 
     Returns an array of shape ``(N, d)``.
     """
-    rng = np.random.default_rng(int(seed))
+    rng = rng_for_role(seed, StreamRole.VECTOR_INITIAL)
     d = mu_0_mean.shape[0]
     _check_square_psd(V_0, "mu_0_var")
     values, vectors = np.linalg.eigh(V_0)
@@ -173,7 +173,7 @@ def _simulate_under_vector_control(
     """
     G = t_grid.size
     N, d = x0.shape
-    rng = np.random.default_rng(int(seed) ^ _SIM_SEED_MASK)
+    rng = rng_for_role(seed, StreamRole.VECTOR_DYNAMICS)
     x = x0.astype(np.float64, copy=True)
     traj = np.empty((G, N, d), dtype=np.float64)
     traj[0] = x
@@ -265,8 +265,9 @@ def solve_lq_mfg_vector(
     tol : float, default 1e-4
         Sup-norm tolerance on ``BR(m) - m`` at the returned mean.
     seed : int, default 42
-        Master RNG seed; identical seed plus identical inputs give
-        identical outputs.
+        Master RNG seed, with separate PCG64/SeedSequence roles for initial
+        states and dynamics. Identical inputs and seed are repeatable in the
+        same environment. Noise is reused across outer iterations.
     m_initial : ndarray of shape (n_grid + 1, d), optional
         Custom initial mean guess for the outer iteration.
     method : {"picard", "fictitious_play"}, default "picard"

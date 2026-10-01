@@ -162,9 +162,9 @@ pub fn euler_maruyama<M: MeanFieldSDE>(
 ///
 /// Determinism contract: same `seed`, same `n_steps`, same model state
 /// gives bit-exact identical noise samples to `euler_maruyama` thanks to
-/// the shared sequential noise-sampling strategy. On any model whose
-/// `diffusion_derivative` returns zero, `milstein` and `euler_maruyama`
-/// produce bit-exact identical trajectories.
+/// the shared sequential noise-sampling strategy. For finite arithmetic,
+/// models with a zero Milstein coefficient produce bit-exact identical
+/// trajectories under `milstein` and `euler_maruyama`.
 ///
 /// Same arguments and return shape as [`euler_maruyama`], including the
 /// optional precomputed `increments` array. Panics if the model has not
@@ -245,10 +245,19 @@ pub fn milstein<M: MeanFieldSDE>(
 
         model.drift(state.view(), drift_buf.view_mut());
         model.diffusion(state.view(), sigma_buf.view_mut());
-        model.diffusion_derivative(state.view(), sigma_deriv_buf.view_mut());
+        let direct_coefficient =
+            model.milstein_coefficient(state.view(), dt, sigma_deriv_buf.view_mut());
+        if !direct_coefficient {
+            model.diffusion_derivative(state.view(), sigma_deriv_buf.view_mut());
+        }
 
         let update = |s: &mut f64, &b: &f64, &z: &f64, &sigma: &f64, &deriv: &f64| {
-            let correction = half_dt * sigma * deriv * (z * z - 1.0);
+            let coefficient = if direct_coefficient {
+                deriv
+            } else {
+                half_dt * sigma * deriv
+            };
+            let correction = coefficient * (z * z - 1.0);
             *s += b * dt + sigma * sqrt_dt * z + correction;
         };
         let zip = Zip::from(&mut state)
