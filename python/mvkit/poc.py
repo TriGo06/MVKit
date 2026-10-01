@@ -58,7 +58,8 @@ def wasserstein2_to_reference(
     reference with masses 0.9999 and 0.0001, pass ``[0.9999]``.
 
     ``epsabs`` and ``epsrel`` control QUADPACK's estimated absolute and
-    relative error on W2 squared, not on W2. Failure to reach the requested
+    relative error on W2 squared, not on W2. The squared transport cost
+    must fit in float64. Failure to reach the requested
     quadrature accuracy raises ``ValueError``. An adaptive rule can miss a
     rare tail or narrow feature that none of its nodes samples, even with an
     estimated error of zero. Without supplied breakpoints the callback should
@@ -94,7 +95,9 @@ def wasserstein2_to_reference(
         ref = np.asarray(reference_inv_cdf(probabilities), dtype=np.float64)
         if ref.shape != sorted_x.shape or not np.isfinite(ref).all():
             raise ValueError("reference_inv_cdf must return finite values with the input shape")
-        value = float(np.mean((sorted_x - ref) ** 2))
+        # Normalize before summation to avoid overflowing an intermediate sum.
+        distance = _transport_norm(sorted_x, ref)
+        value = distance * distance
         if not np.isfinite(value):
             raise ValueError("reference has a non-finite squared transport cost")
         return value

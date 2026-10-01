@@ -123,3 +123,19 @@ def test_handles_1d_spatial():
     initial_mean_v = x0[:, 1].mean()
     final_mean_v = history[-1, :, 1].mean()
     np.testing.assert_allclose(final_mean_v, initial_mean_v, atol=1e-8)
+
+
+@pytest.mark.parametrize("scheme", ["euler", "milstein"])
+@pytest.mark.parametrize("entry_point", ["public", "binding"])
+def test_zero_spatial_dimension_raises_value_error(scheme, entry_point):
+    from mvkit import _core
+
+    simulate = (simulate_cucker_smale if entry_point == "public"
+                else _core.simulate_cucker_smale)
+    with pytest.raises(ValueError, match="spatial_dim must be >= 1"):
+        simulate(np.empty((2, 0)), 1.0, 1, spatial_dim=0, scheme=scheme)
+
+
+def test_negative_spatial_dimension_raises_value_error():
+    with pytest.raises(ValueError, match="spatial_dim must be >= 1"):
+        simulate_cucker_smale(np.empty((2, 0)), 1.0, 1, spatial_dim=-1)

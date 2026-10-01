@@ -80,7 +80,7 @@ def simulate_cucker_smale(
     n_steps : int
         Number of Euler-Maruyama steps. ``dt = t_final / n_steps``.
     spatial_dim : int, default 2
-        Spatial dimension :math:`d`.
+        Spatial dimension :math:`d`. Must be at least 1.
     beta : float, default 0.5
         Kernel exponent. For :math:`\beta < 1/2` the model converges to
         consensus unconditionally (Cucker-Smale 2007).
@@ -108,6 +108,8 @@ def simulate_cucker_smale(
     history : ndarray, shape (n_recorded, N, 2 * spatial_dim)
         Recorded trajectories.
     """
+    if spatial_dim < 1:
+        raise ValueError(f"spatial_dim must be >= 1, got {spatial_dim}")
     x0 = np.ascontiguousarray(x0, dtype=np.float64)
     if x0.ndim != 2:
         raise ValueError(f"x0 must be 2D, got shape {x0.shape}")
