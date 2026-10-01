@@ -1,60 +1,81 @@
 # mvkit
 
-Fast McKean-Vlasov particle simulation. Rust core, Python API.
+McKean-Vlasov particle simulation with a Rust core and a Python API.
 
 [![CI](https://github.com/TriGo06/MVKit/actions/workflows/ci.yml/badge.svg)](https://github.com/TriGo06/MVKit/actions/workflows/ci.yml)
 [![License](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue)](#license)
 
-`mvkit` simulates systems of interacting particles whose dynamics depend on the empirical distribution of the population, i.e. mean-field SDEs of McKean-Vlasov type:
+`mvkit` simulates interacting stochastic particles whose dynamics depend on
+the population distribution. It also provides numerical Mean Field Game
+(MFG) solvers in Python, for studying equilibria between individual controls
+and population dynamics.
 
-$$
-\mathrm{d}X^{i,N}_t = b\!\left(X^{i,N}_t, \tfrac{1}{N}\sum_{j=1}^N \delta_{X^{j,N}_t}\right)\mathrm{d}t + \sigma\,\mathrm{d}W^i_t.
-$$
+**Status: early alpha, v0.1.** The current development priority is particle
+simulation performance, reproducibility and custom model support. See the
+[performance roadmap](docs/performance-roadmap.md) and [changelog](CHANGELOG.md).
 
-When $N \to \infty$, each particle converges in law to the McKean-Vlasov SDE thanks to the propagation of chaos. `mvkit` lets you simulate such systems efficiently from Python while keeping the heavy lifting in Rust.
+[Installation](#installation) · [Quick start](#quick-start) ·
+[Particle models](#particle-models) · [MFG solvers](#mean-field-games) ·
+[Documentation](#documentation) · [Tests](#tests-and-contributing)
 
-## Status
+## Installation
 
-Early alpha (v0.1). The current scope:
+Install from this repository with:
 
-- Generic mean-field SDE trait (`MeanFieldSDE`) with state-dependent diagonal diffusion
-- Euler-Maruyama and Milstein integrators with Rayon-parallel particle updates. Selected via `scheme="euler"` (default) or `scheme="milstein"` on every `simulate_*` entry point. On constant-diffusion models, Milstein reduces to Euler exactly because the diffusion derivative is zero; the two schemes produce bit-exact identical trajectories there.
-- Built-in **Cucker-Smale** flocking model (any spatial dimension)
-- Built-in **linear-quadratic** McKean-Vlasov model with closed-form Gaussian moments, used as a quantitative weak-order benchmark for the integrator
-- Built-in **Kuramoto** model of coupled phase oscillators with O(N) drift via the order-parameter trick
-- Built-in **mean-field Cox-Ingersoll-Ross** model with square-root diffusion: the first model with non-trivial state-dependent diffusion, used to exercise the Milstein correction term
-- New `mvkit.mfg` sub-module: scalar and **vector linear-quadratic Mean Field Game** solvers (`solve_lq_mfg`, `solve_lq_mfg_vector`) via Picard iteration, with closed-form (matrix) Riccati and (matrix) Lyapunov covariance benchmarks. The vector solver handles arbitrary state dimension with full Q, R, Sigma matrices and recovers cross-coordinate correlations from non-diagonal Sigma.
-- **Brownian-increment hook** on every `simulate_*` function (`increments=` keyword) plus `mvkit.brownian` helpers (`generate_increments`, `coarsen`), enabling pathwise (strong) error tests by driving coarse and fine simulations from the same Brownian path. Recovers the textbook strong orders (Euler 1/2, Milstein 1) on multiplicative-noise CIR.
-- Standalone **HJB grid solver** (`mvkit.mfg.solve_hjb`): backward Hamilton-Jacobi-Bellman on a 1D periodic grid with Engquist-Osher upwind for the quadratic Hamiltonian and implicit-explicit time stepping. First step toward a generic non-LQ MFG solver. Validated quantitatively via the Hopf-Cole closed form ($u = -\sigma^2 \log v$ linearizes to backward heat) plus monotonicity and self-convergence tests.
-- Standalone **Fokker-Planck grid solver** (`mvkit.mfg.solve_fokker_planck`): forward FP on the same periodic grid with conservative-form upwind convection and implicit central diffusion. Mass-preserving by construction (errors of order $10^{-13}$ over thousands of steps). Validated against the closed-form translate-and-decay of a Fourier-mode initial under constant drift; convergence rate matches the first-order theoretical prediction.
-- **Generic grid-based MFG solver** (`mvkit.mfg.solve_mfg`) on top of the HJB and FP grids: a user-defined `MFGProblem` (running cost $F(t, x, m)$, terminal cost $g(x, m_T)$, initial density, $\sigma$, $T$, spatial domain) is solved via Picard or Fictitious Play outer iteration. **Periodic and Neumann (no-flux) boundary conditions are both supported**: periodic identifies endpoints (natural for ring/torus geometries); Neumann enforces $\partial_x u = 0$ on the value function and $J = 0$ on the FP flux (natural for problems on a closed interval, conserves mass exactly). Validated against the closed-form LQ-MFG in both the symmetric (periodic-friendly) and asymmetric (Neumann-only) settings. See `examples/mfg_grid_demo.py` for a non-LQ congestion problem.
-- **2D grid-based MFG solver** (`mvkit.mfg.solve_mfg_2d`) extending the 1D pipeline to scalar state in $\mathbb{R}^2$: per-axis Engquist-Osher upwind for the Hamiltonian $H(\nabla u) = \tfrac{1}{2}|\nabla u|^2 - F$, conservative-form upwind FP, 2D discrete Laplacian via Kronecker sum factored once with sparse LU. Periodic and Neumann BC, isotropic or **anisotropic per-axis diffusion** via `sigma=(sigma_x, sigma_y)`. Validated against the closed-form vector LQ-MFG (`solve_lq_mfg_vector` at $d = 2$) in both isotropic and anisotropic settings: the equilibrium Lyapunov covariance trajectory is recovered at first order under joint refinement.
-- Reproducible seeded RNG (Xoshiro256++); see the [stream and compatibility contract](docs/reproducibility.md)
-- PyO3 bindings, abi3 wheels for Python 3.9+
+- **Python 3.9+** with `pip` and `venv`, and **Git**.
+- **Rust stable and Cargo**, installed with [rustup](https://rust-lang.org/tools/install/).
+- A native build toolchain:
+  - **Windows:** Visual Studio Build Tools with **Desktop development with C++**
+    (MSVC and a Windows SDK), using the Rust MSVC toolchain.
+  - **macOS:** Xcode Command Line Tools.
+  - **Linux:** a C/C++ compiler and linker (for example, `build-essential`
+    on Debian/Ubuntu).
 
-The development priority is high-performance stochastic particle simulation:
-competitive benchmarks, efficient interaction kernels, reproducible parallel
-noise, and a compiled path for custom models. See the
-[performance roadmap](docs/performance-roadmap.md) and the
-[competitive particle benchmark](benchmarks/README.md). Existing MFG solvers
-remain available alongside the particle simulation core.
+Open a new terminal after installing the tools. Check that `python --version`
+(or `python3 --version` on macOS/Linux), `cargo --version` and `git --version`
+work before continuing.
 
-## Install (from source)
+### Windows (PowerShell)
 
-```bash
-git clone https://github.com/TriGo06/MVKit
+```powershell
+git clone https://github.com/TriGo06/MVKit.git
 cd MVKit
-pip install maturin
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install "maturin>=1.7,<2.0"
 maturin develop --release
 ```
 
-Once a release is published:
+If PowerShell blocks activation, use the virtual environment's interpreter
+directly to build and install the package:
 
-```bash
-pip install mvkit
+```powershell
+.\.venv\Scripts\python.exe -m pip install .
 ```
 
+After that, use `.\.venv\Scripts\python.exe` to run examples in that environment.
+
+### macOS / Linux
+
+```bash
+git clone https://github.com/TriGo06/MVKit.git
+cd MVKit
+python3 -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+python -m pip install "maturin>=1.7,<2.0"
+maturin develop --release
+```
+
+Maturin builds the Rust extension and installs the package with its NumPy and
+SciPy runtime dependencies. The activated environment is required by
+`maturin develop`; see the [Maturin tutorial](https://www.maturin.rs/tutorial).
+Use `--release` for simulations and performance measurements.
+
 ## Quick start
+
+Simulate a flock in two spatial dimensions:
 
 ```python
 import numpy as np
@@ -79,246 +100,136 @@ history = simulate_cucker_smale(
 print(history.shape)  # (101, 500, 4)
 ```
 
-See `examples/cucker_smale_demo.py` for a runnable visualization.
+The state stores positions first, then velocities. Here each saved frame has
+500 particles and four coordinates. `record_every=20` saves every twentieth
+step; the initial state is included. Set `record_every=0` to keep only the
+initial and final states.
 
-## Math summary: linear-quadratic McKean-Vlasov
+For plots, install the optional development dependencies with
+`maturin develop --release --extras dev`, then run
+`python examples/cucker_smale_demo.py` in the activated environment.
 
-Each particle has scalar state with dynamics
+## Particle models
 
-$$
-\mathrm{d}X_i = (a\, X_i + b\, \bar X)\,\mathrm{d}t + \sigma\,\mathrm{d}W_i,
-$$
+All four functions are available from `mvkit` and accept
+`scheme="euler"` (default) or `scheme="milstein"`, `seed`,
+`record_every` and optional shared normal `increments`.
 
-where $\bar X = (1/N)\sum_j X_j$. For i.i.d. Gaussian initial states, the mean is $m(t)=m_0\exp((a+b)t)$. Define $v_c(t)=v_0\exp(2ct)+\sigma^2(\exp(2ct)-1)/(2c)$, with $v_0+\sigma^2t$ when $c=0$. The McKean-Vlasov limit variance is $v_a(t)$. At finite $N$, the marginal particle variance is $(1-1/N)v_a(t)+v_{a+b}(t)/N$, while the expected empirical population variance is $(1-1/N)v_a(t)$. These distinctions matter when benchmarking discretization errors at finite particle counts.
+| Model | Function | Initial state shape |
+|---|---|---|
+| Cucker-Smale flocking | `simulate_cucker_smale` | `(N, 2 * spatial_dim)`, with `spatial_dim >= 1` |
+| Linear-quadratic mean-field dynamics | `simulate_linear_quadratic` | `(N, 1)` |
+| Kuramoto phase oscillators | `simulate_kuramoto` | `(N, 1)` |
+| Mean-field Cox-Ingersoll-Ross (CIR) | `simulate_mean_field_cir` | `(N, 1)`, finite non-negative values |
 
-## Math summary: Cucker-Smale
+The Rust core provides Rayon-parallel particle updates and a `MeanFieldSDE`
+trait for custom Rust models. Python currently exposes the built-in models.
+Kuramoto uses an `O(N)` drift evaluation; Cucker-Smale evaluates all pairs
+in `O(N²)` per step.
 
-Per particle the state is $(x_i, v_i) \in \mathbb{R}^{2d}$. The dynamics:
+For constant diffusion, Euler and Milstein produce identical trajectories
+with the same inputs and noise. CIR exercises the state-dependent Milstein
+correction; neither scheme guarantees non-negative discrete CIR states.
 
-$$
-\mathrm{d}x_i = v_i\,\mathrm{d}t,\qquad
-\mathrm{d}v_i = \frac{1}{N}\sum_{j=1}^N K(|x_j - x_i|)(v_j - v_i)\,\mathrm{d}t + \sigma\,\mathrm{d}W_i,
-$$
-
-with kernel $K(r) = (1 + r^2)^{-\beta}$. The deterministic part conserves the mean velocity $\bar v = \frac{1}{N}\sum_i v_i$, used as a sanity check in the test suite. For $\beta < 1/2$, velocities concentrate around $\bar v$ unconditionally (Cucker and Smale, 2007).
-
-## Math summary: Kuramoto
-
-Each particle has a scalar phase $\theta_i \in \mathbb{R}$ (left unwrapped during integration; the user can reduce mod $2\pi$ for visualization). The dynamics:
-
-$$
-\mathrm{d}\theta_i = \omega_i\,\mathrm{d}t + \frac{K}{N}\sum_{j=1}^N \sin(\theta_j - \theta_i)\,\mathrm{d}t + \sigma\,\mathrm{d}W_i,
-$$
-
-where $\omega_i$ are heterogeneous natural frequencies and $K$ is the coupling strength. Synchronization is captured by the Kuramoto order parameter
-
-$$
-r(t)\, e^{i\psi(t)} = \frac{1}{N}\sum_{j=1}^N e^{i\theta_j(t)},
-$$
-
-with $r \in [0, 1]$. For Gaussian $\omega_i \sim N(0, \sigma_\omega^2)$ without dynamic noise, the infinite-population critical coupling is $K_c = 2\sigma_\omega \sqrt{2/\pi}$. Below $K_c$ the population stays incoherent ($r \to 0$ as $N \to \infty$); above $K_c$ a fraction of oscillators lock and $r$ stabilizes between 0 and 1. The Lorentzian formula $r=\sqrt{1-K_c/K}$ does not apply to Gaussian frequencies. Nonzero dynamic noise also changes the synchronization threshold.
-
-The drift is implemented in $O(N)$ per time step via the trig identity $\sum_j \sin(\theta_j - \theta_i) = S\cos(\theta_i) - C\sin(\theta_i)$ with $C = \sum_j \cos(\theta_j)$ and $S = \sum_j \sin(\theta_j)$: a sequential reduction over the phase column gives $C, S$, then a parallel-over-rows application sets each particle's drift in constant time. A naive nested-loop form is intentionally avoided; on the test cases it would be ~1000x slower.
-
-Reference: Kuramoto, Y. (1975). *Self-entrainment of a population of coupled non-linear oscillators*. International Symposium on Mathematical Problems in Theoretical Physics.
-
-See `examples/kuramoto_demo.py` for a runnable visualization showing phase trajectories and $r(t)$ on either side of $K_c$.
-
-## Math summary: mean-field CIR
-
-Each particle has scalar state $X_i \ge 0$ with dynamics
-
-$$
-\mathrm{d}X_i = \kappa(\theta - X_i)\,\mathrm{d}t + b\,(\bar X - X_i)\,\mathrm{d}t + \sigma\sqrt{\max(X_i, 0)}\,\mathrm{d}W_i,
-$$
-
-where $\bar X = (1/N)\sum_j X_j$. The first drift term is the standard CIR mean-reversion towards $\theta$ at rate $\kappa$; the second is the McKean-Vlasov interaction. The diffusion is square-root in the state, which is what makes Milstein non-trivial on this model: the diagonal Jacobian $(\sigma\sqrt{x})' = 0.5 \sigma / \sqrt{x}$ is non-zero, so the Milstein correction term $\tfrac{1}{2}\sigma\sigma'\,\mathrm{d}t (Z^2 - 1)$ fires and modifies trajectories pathwise.
-
-The truncation $\max(X_i, 0)$ keeps the diffusion real if a discretization step underflows below zero. For non-negative interaction $b$ and strictly positive initial states, the Feller condition $2\kappa\theta \ge \sigma^2$ guarantees positivity of the continuous-time process. Euler and Milstein do not guarantee positivity of discrete states. The Python entry point requires finite non-negative initial states, and both APIs require finite non-negative $b$. For positive states the Milstein coefficient is evaluated directly as $\sigma^2\,dt/4$, without a derivative floor; it is zero for the truncated non-positive discrete extension.
-
-For $b=0$, particles are independent classical CIR processes. For any admissible $b$, interactions cancel in the population sum, so $\mathbb{E}[\bar X_t] = \theta + (\bar X_0 - \theta)e^{-\kappa t}$. The mean-reversion rate of the population mean is $\kappa$, independent of $b$.
-
-A note on Milstein's improvement. For compatible diffusion and sufficiently regular coefficients, Milstein has strong order 1 (vs Euler's strong order 1/2), but on weak error of smooth functionals of $X_T$ both schemes are order 1; the constants of the leading $O(\mathrm{d}t)$ terms can go either way depending on the functional, and on CIR the Milstein-only contribution to $E[X_{n+1}^2 \mid X_n]$ is $+\tfrac{1}{8}\sigma^4\,\mathrm{d}t^2$. This positive contribution may improve or worsen the absolute second-moment error, depending on the Euler bias. The strong-order-1 improvement only shows up on pathwise error or non-smooth functionals (barrier hits, trajectory maxima). CIR has a non-Lipschitz square-root coefficient, so its rate also depends on parameters and boundary behavior; the shared-increment tests below check selected regimes.
-
-References: Cox, J. C., Ingersoll, J. E., and Ross, S. A. (1985). *A theory of the term structure of interest rates*. Econometrica 53, 385-407. McKean-Vlasov extensions are standard, see Carmona and Delarue (2018).
-
-The Rust coordinatewise Milstein implementation requires `MeanFieldSDE::supports_milstein()` to opt in. This requires a correct self-derivative or direct `milstein_coefficient` override, and vanishing cross-noise derivatives across coordinates and particles. A diagonal diffusion matrix alone is insufficient; cross iterated stochastic integrals are not implemented. All four built-in models satisfy the structural condition.
-
-## Propagation of chaos
-
-Propagation of chaos connects an interacting particle system to its McKean-Vlasov limit under suitable assumptions on the dynamics. For **independent** 1D samples with a finite $(4+\varepsilon)$-th moment, Fournier and Guillin (2015) give $\mathbb{E}[W_2^2(\mu_N,\mu)]=O(N^{-1/2})$. Jensen's inequality yields the general bound $\mathbb{E}[W_2(\mu_N,\mu)]=O(N^{-1/4})$. A $-1/2$ slope for $W_2$ is not universal: Bernoulli samples have order $N^{-1/4}$. Interacting particles also require a model-specific coupling estimate.
-
-`mvkit.poc` sweeps particle counts and fits the log-log slope of median W2 errors. Distances between two empirical measures use exact step-quantile integration, including unequal sample counts. Distances to a reference inverse CDF use adaptive quadrature with error tolerances on W2 squared. Known jumps or narrow features of the reference quantile must be supplied through `reference_breakpoints` (for example `[0.9999]` for a rare second atom of probability `1e-4`). An adaptive quadrature can otherwise miss a rare tail entirely, even while reporting zero estimated error; arbitrary inverse-CDF callbacks do not carry a certified error bound. A slope near $-1/2$ is an empirical benchmark for the Gaussian example below, not a consequence of the general moment bound.
-
-```python
-import numpy as np
-from scipy.stats import norm
-
-from mvkit import simulate_linear_quadratic
-from mvkit.poc import estimate_propagation_of_chaos_rate
-
-a, b, sigma, T = -0.5, 1.0, 0.5, 1.0
-m_0, v_0 = 0.0, 1.0
-m_T = m_0 * np.exp((a + b) * T)
-v_T = v_0 * np.exp(2 * a * T) + sigma**2 * (np.exp(2 * a * T) - 1) / (2 * a)
-
-def simulator(n, seed):
-    rng = np.random.default_rng(seed)
-    x0 = rng.normal(m_0, np.sqrt(v_0), size=(n, 1))
-    h = simulate_linear_quadratic(x0, T, 1000, a=a, b=b, sigma=sigma, seed=seed)
-    return h[-1, :, 0]
-
-result = estimate_propagation_of_chaos_rate(
-    simulator=simulator,
-    reference_inv_cdf=norm(loc=m_T, scale=np.sqrt(v_T)).ppf,
-    n_values=[100, 300, 1000, 3000, 10000],
-    n_seeds=16,
-)
-print(result.fitted_slope)  # should be ~ -0.5
-```
-
-See `examples/poc_rate_lq.py` for a runnable two-panel figure showing the log-log fit and the empirical-vs-analytical CDF overlay at the largest $N$.
-
-Scope. Real-valued 1D samples only (for example LinearQuadratic and MeanFieldCIR). Phase angles require a separate circular-distance treatment. Cucker-Smale state is 4D, which requires sliced or projected Wasserstein and is on the v0.2 roadmap.
-
-## Strong-error tests via shared Brownian paths
-
-Every `simulate_*` function accepts an optional `increments` keyword: a 3D array of standard normals of shape `(n_steps, N, dim)` that the integrator uses in place of internal sampling. With it you can drive two simulations at different `n_steps` from the same Brownian path, which makes pathwise (strong) error well-defined. The `mvkit.brownian` module ships two helpers:
-
-- `generate_increments(n_steps, n_particles, dim, seed)` for drawing a fresh fine grid.
-- `coarsen(fine_increments, factor)` that aggregates onto a coarser grid via the variance-preserving bridge relation $Z^{\text{coarse}}_k = \tfrac{1}{\sqrt f}\sum_{j=0}^{f-1} Z^{\text{fine}}_{f k + j}$.
-
-Combined, they reproduce the textbook strong orders on multiplicative-noise SDEs:
-
-```python
-import numpy as np
-from mvkit import simulate_mean_field_cir
-from mvkit.brownian import generate_increments, coarsen
-
-N, T, n_fine = 5000, 1.0, 4096
-x0 = np.full((N, 1), 0.04)
-Z_fine = generate_increments(n_steps=n_fine, n_particles=N, dim=1, seed=0)
-
-ref = simulate_mean_field_cir(x0, T, n_fine, kappa=1.0, theta=0.04, b=0.0,
-                              sigma=0.2, increments=Z_fine, scheme="milstein")
-X_ref = ref[-1, :, 0]
-
-errs, dts = [], []
-for n_steps in [32, 64, 128, 256, 512, 1024]:
-    Z_n = coarsen(Z_fine, factor=n_fine // n_steps)
-    h = simulate_mean_field_cir(x0, T, n_steps, kappa=1.0, theta=0.04, b=0.0,
-                                sigma=0.2, increments=Z_n, scheme="euler")
-    errs.append(np.sqrt(np.mean((h[-1, :, 0] - X_ref) ** 2)))
-    dts.append(T / n_steps)
-
-slope, _ = np.polyfit(np.log(dts), np.log(errs), 1)
-print(slope)   # ~ 0.55, the Euler strong order on multiplicative noise
-```
-
-See `examples/strong_error_demo.py` for the two-panel figure showing Euler vs Milstein on CIR.
+`mvkit.brownian` generates and coarsens shared normal increments for pathwise
+comparisons. `mvkit.poc` measures 1D Wasserstein distances and fits empirical
+particle-count convergence rates. See the
+[numerical guide](docs/numerical-guide.md) for assumptions, limitations and
+examples, and the [reproducibility contract](docs/reproducibility.md) for
+the scope of seeded results.
 
 ## Mean Field Games
 
-A Mean Field Game (Lasry and Lions, 2007) is a Cournot-Nash equilibrium for a continuum of identical agents: each agent chooses a control to minimize a personal cost that depends on the population's distribution, and at equilibrium the distribution generated by every agent's optimal response coincides with the input distribution. Numerically, finding an equilibrium amounts to solving a coupled forward-backward system: a Hamilton-Jacobi-Bellman PDE for the value function $u(t, x)$ backward from a terminal condition, and a Fokker-Planck PDE for the state distribution $\mu_t$ forward from the initial law.
+Choose a solver from `mvkit.mfg`:
 
-`mvkit.mfg` is a new sub-module dedicated to numerical MFG. The first release ships the scalar linear-quadratic case, where the HJB ansatz $u(t, x) = \tfrac{1}{2} P(t) x^2 + Q(t) x + R(t)$ reduces the problem to scalar ODEs (Riccati for $P$, linear ODE for the variance), so the equilibrium is known in closed form. Two iterative solvers share a common best-response operator and can be selected via the `method` keyword:
-
-- `method="picard"` (default): $m^{(k+1)} = \mathrm{BR}(m^{(k)})$. Geometric convergence when the BR map is a contraction (LQ-MFG with moderate $\int_0^T P$). Typically 5 to 10 iterations to $10^{-4}$.
-- `method="fictitious_play"` (also exposed as `solve_lq_mfg_fictitious_play`): $m^{(k+1)}=\mathrm{BR}(\bar m^{(k)})$, where $\bar m^{(k)}$ is the historical average. It can be much slower than Picard. Cardaliaguet and Hadikhanloo (2017) prove convergence for potential MFGs under additional regularity assumptions; this is not an unconditional $O(1/k)$ sup-norm error bound. Lasry-Lions monotonicity alone does not make the best-response map contractive.
-
-A `damping_burn_in` parameter on the FP solver runs leading Picard steps before starting to accumulate the historical average, which speeds up the tail when the initial guess is far from the equilibrium.
-
-### Picking an MFG solver
-
-| Use | Function | Algorithm |
+| Problem | Function | Numerical approach |
 |---|---|---|
-| Cost is exactly LQ ($\tfrac{1}{2} q (x - \bar m)^2$, scalar) | `mvkit.mfg.solve_lq_mfg` | Particle Picard (or Fictitious Play) on the mean trajectory; analytical Riccati for $P(t)$ |
-| Cost is non-LQ, scalar 1D state | `mvkit.mfg.solve_mfg` | Grid HJB and Fokker-Planck with Picard / FP outer iteration |
+| Scalar linear-quadratic (LQ) | `solve_lq_mfg` | Particle response iteration with scalar Riccati and variance ODEs |
+| Vector LQ | `solve_lq_mfg_vector` | Particle response iteration with matrix Riccati and covariance ODEs |
+| General costs, 1D state | `solve_mfg` | Coupled HJB / Fokker-Planck grid |
+| General costs, 2D state | `solve_mfg_2d` | Coupled HJB / Fokker-Planck grid |
 
-The two solvers agree on LQ within first-order discretization error of the grid solver; we use that as a regression check for the grid pipeline. Use `solve_lq_mfg` for benchmarks and quick scalar LQ studies (no spatial discretization error in the value function), and `solve_mfg` whenever the cost is non-LQ.
+All four support `method="picard"` and `method="fictitious_play"`.
+LQ reference trajectories are computed by numerical ODE integration;
+closed-form scalar cases serve as regression checks.
 
-```python
-import numpy as np
-from mvkit.mfg import solve_lq_mfg
+Both grid solvers support periodic and Neumann boundaries. The 1D solver
+accepts custom convex Hamiltonians satisfying the documented normalization
+conditions; the 2D solver uses a quadratic Hamiltonian and supports
+`sigma=(sigma_x, sigma_y)` for anisotropic diffusion.
+Standalone HJB and Fokker-Planck solvers are also available in 1D and 2D.
 
-sol = solve_lq_mfg(
-    q=1.0, q_T=0.5, sigma=0.5, T=1.0,
-    mu_0_mean=1.5, mu_0_var=1.0,
-    n_particles=10_000, n_grid=200, seed=0,
-)
-print("converged:", sol.converged, "n_iterations:", sol.n_iterations)
-print("max |m - m_0|:", np.max(np.abs(sol.m - 1.5)))   # equilibrium mean is constant
+Check `converged` and `fixed_point_residual` before interpreting a solution.
+See [MFG methods and example](docs/numerical-guide.md#mean-field-games)
+for convergence criteria, time-step constraints and the Hamiltonian contract.
 
-# Compare empirical terminal variance to the analytical V(T).
-V_T_emp = sol.x_trajectory[-1].var()
-print(f"V(T) empirical = {V_T_emp:.4f}, analytical = {sol.V[-1]:.4f}")
+## Documentation
+
+- [Numerical guide](docs/numerical-guide.md): model equations, Wasserstein
+  distances, strong-error experiments, MFG methods and references.
+- [Random streams and reproducibility](docs/reproducibility.md).
+- [Competitive particle benchmark](benchmarks/README.md).
+- [Performance roadmap](docs/performance-roadmap.md).
+- [Runnable examples](examples): flocking, synchronization, convergence rates
+  and scalar/grid MFG studies.
+
+## Tests and contributing
+
+From the repository root, with the virtual environment activated:
+
+```bash
+maturin develop --release --extras dev
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets -- -D warnings
+cargo test --workspace --release
+python -m pytest -v tests/
 ```
 
-For an arbitrary input mean, the affine HJB coefficient must be solved backward: $s'=Ps+qm$, $s(T)=-q_Tm(T)$, and $\alpha^*=-Px-s$. In the vector case, $s'=PR^{-1}s+Qm$ and $\alpha^*=-R^{-1}(Px+s)$. The shortcut $s=-Pm$ only applies to constant input means.
+The `dev` extra installs pytest, matplotlib and tqdm for tests and demos.
+Some comparison tests require optional benchmark backends; their setup is
+documented in the [benchmark guide](benchmarks/README.md).
 
-All four MFG solvers report `fixed_point_residual = ||BR(m)-m||_inf` for the returned mean or density. `converged` is true only when this residual is below `tol`. Small changes between successive averaged responses are insufficient. Grid solutions evaluate the returned value function and control against the returned density. The explicit HJB and transport steps enforce CFL bounds of one; increase `n_t` if the guard rejects a step. Neumann grids use cell centers.
-
-The closed-form construction follows Carmona and Delarue (2018), *Probabilistic Theory of Mean Field Games with Applications I*, Section 3.5. The Fictitious Play scheme follows Cardaliaguet and Hadikhanloo (2017). See `examples/mfg_lq_demo.py` for a three-panel figure ($P(t)$, analytical-vs-empirical variance, particle trajectories with the equilibrium mean overlaid) and `examples/mfg_lq_picard_vs_fp.py` for a side-by-side log-y convergence trace of both methods.
-
-Roadmap. The non-LQ MFG pipeline is end-to-end in 1D and 2D, with periodic + Neumann BC, and is validated against closed-form LQ-MFG references in each dimension. The 1D HJB solver accepts an arbitrary convex Hamiltonian: `solve_hjb` and `MFGProblem` take a `Hamiltonian`, with `power_hamiltonian(q)` covering the `H(p) = |p|^q / q` family. The generalized Engquist-Osher scheme stays explicit, so no per-cell nonlinear solve is needed. Next: non-quadratic Hamiltonians for the 2D grid solver (where the Engquist-Osher form is no longer separable), $d \ge 3$ grid solvers (memory-bound without a sparser-than-LU factorization or GPU offload), and tamed schemes for super-linear drift in the particle simulators.
+[CI](https://github.com/TriGo06/MVKit/actions/workflows/ci.yml) runs Rust checks
+on Linux, macOS and Windows, and Python tests on 3.9 and 3.12 across those
+platforms. It also checks installation of the built wheel in a fresh environment.
 
 ## Benchmarks
 
-Criterion benchmarks track Euler-Maruyama throughput in particle-steps per second. Run them from the workspace root:
+The [benchmark guide](benchmarks/README.md) defines the problems, shared
+noise, dependency snapshots and measurement protocol. Published studies:
+
+- [CPU baseline, 26 September 2026](benchmarks/results/2026-09-26-findings.md).
+- [Kernel optimization study, 26 September 2026](benchmarks/results/2026-09-26-kernel-optimization/README.md).
+
+Results apply to the recorded hardware, revision, CPU budget and numerical
+method. Use the supplied scripts to measure your own workload.
+
+For the Rust Criterion microbenchmarks:
 
 ```bash
 cargo bench --bench integrators
 ```
 
-Each suite reports throughput via `Throughput::Elements(N * n_steps)` so Criterion prints the unit directly. HTML reports land under `target/criterion/` and are gitignored alongside the rest of `target/`. Indicative numbers on an Apple-silicon laptop, single process:
+HTML reports are written to `target/criterion/`. The
+[manual benchmark workflow](.github/workflows/bench.yml) uploads those reports.
+A separate [particle benchmark workflow](.github/workflows/particle-benchmarks.yml)
+checks shared-noise agreement on relevant pull requests; its timings are not
+a performance guarantee.
 
-- Linear-quadratic (cheap drift): ~14 M particle-steps/s at N=1000, ~96 M at N=10000, ~316 M at N=100000. The sub-linear region at small N is dominated by sequential noise sampling and parallel-launch overhead; once N is large enough to amortize that, the integrator scales near-linearly with the rayon pool.
-- Cucker-Smale (O(N^2) pairwise drift): ~940 K at N=100, ~460 K at N=500, ~130 K at N=2000. The drift cost dominates once N grows; an FFT-convolution path for translation-invariant kernels is on the roadmap.
+## Project layout
 
-The benchmarks are not part of CI by default; they are too noisy on shared GitHub runners. A manual workflow at `.github/workflows/bench.yml` (triggered via the Actions tab) runs them on `ubuntu-latest` and uploads the HTML report as an artifact.
-
-## Architecture
-
+```text
+crates/mvkit-core/   Rust models, traits and integrators
+crates/mvkit-py/     Python bindings
+python/mvkit/       Python API, Brownian helpers and Wasserstein utilities
+python/mvkit/mfg/   Scalar/vector LQ and 1D/2D grid MFG solvers
+tests/             Python tests
+examples/          Runnable demonstrations
+docs/              Numerical guide, reproducibility and roadmap
+benchmarks/        Comparative benchmarks and published results
 ```
-mvkit/
-├── crates/
-│   ├── mvkit-core/   # pure Rust: traits, integrators, models
-│   └── mvkit-py/     # PyO3 bindings, no business logic
-├── python/mvkit/     # Python package, wraps _core
-│   ├── poc.py        # propagation-of-chaos rate utility
-│   ├── brownian.py   # increment helpers for strong-error tests
-│   └── mfg/          # Mean Field Games sub-module (LQ for now)
-├── tests/            # pytest test suite
-└── examples/         # runnable demos
-```
-
-The split between `mvkit-core` and `mvkit-py` keeps the FFI surface thin and lets the core crate be reused from pure Rust. The Python wrapper layer adds input validation and ergonomic defaults without touching the Rust ABI.
-
-## Contributing
-
-PRs welcome. Before submitting, please run:
-
-```bash
-cargo test --workspace
-cargo clippy --workspace -- -D warnings
-cargo fmt --all -- --check
-maturin develop
-pytest
-```
-
-## References
-
-- Cucker, F. and Smale, S. (2007). *Emergent behavior in flocks*. IEEE Trans. Automatic Control.
-- Sznitman, A.-S. (1991). *Topics in propagation of chaos*. Ecole d'Eté de Probabilités de Saint-Flour XIX.
-- Carmona, R. and Delarue, F. (2018). *Probabilistic Theory of Mean Field Games with Applications I & II*. Springer.
-- Lasry, J.-M. and Lions, P.-L. (2007). *Mean field games*. Japanese Journal of Mathematics 2, 229-260.
-- Cardaliaguet, P. and Hadikhanloo, S. (2017). *Learning in mean field games: the fictitious play*. ESAIM: Control, Optimisation and Calculus of Variations 23, 569-591.
 
 ## License
 
-Dual-licensed under either of:
-
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-- Apache License 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache 2.0](LICENSE-APACHE),
 at your option.
